@@ -1,169 +1,113 @@
-import random
-import pygame
-from Renderer import PygameRenderer
-from enum import Enum
+from Game import Game, Cell
+from PygameRenderer import PygameRenderer
+from NoScreenRenderer import NoScreenRenderer
+from ExampleAgents import RandomAgent, RandomLegalMovesAgent
 
-class Cell:
-    def __init__(self, is_mine=False):
-        self.uncovered = False
-        self.is_mine = is_mine
-        self.is_flagged = False
-        self.num_adjacent_mines = 0
-
-
-class Game:
-    def __init__(self, config):
-        self.config = config
-        try:
-            throwExceptionOnInvalidConfig(config)
-        except:
-            print("Configuration is invalid!")
-        
-        self.reset()
-        self.state = GameState.START
-
-
-    def throwExceptionOnInvalidConfig(self):
-        return 5
-
-
-    def reset(self):
-        self.createMinelessGrid()
-        self.populateGridWithMines()
-        self.markGridSquaresWithMineProximityCount()
-
-
-    def createMinelessGrid(self):
-        self.grid = []
-
-        for _ in range(self.config['columns']):
-            column = []
-
-            for _ in range(self.config['rows']):
-                square = Cell(is_mine=False)
-                column.append(square)
-            
-            self.grid.append(column)
-
-
-    def populateGridWithMines(self):
-        total_slots = self.config['rows'] * self.config['columns']
-
-        if self.config['num_mines'] > total_slots:
-            raise Exception("Too many mines! Cannot fit {} mines into a {}x{} grid (which has only {} cells)"
-        .format(self.config['num_mines'], self.config['rows'], self.config['columns'], total_slots))
-
-        for _ in range(self.config['num_mines']):
-            self.placeMineInRandomEmptySquare()   
-
-
-    def placeMineInRandomEmptySquare(self):
-        mine_placed = False
-
-        # Keep trying random squares until an empty (non-mine) square is found
-        while not mine_placed:
-            x = random.randrange(0, self.config['columns'])
-            y = random.randrange(0, self.config['rows'])
-
-            if not self.grid[x][y].is_mine:
-                self.grid[x][y].is_mine = True
-                mine_placed = True
-
-
-    def markGridSquaresWithMineProximityCount(self):
-        for x in range(self.config['columns']):
-            for y in range(self.config['rows']):
-                self.grid[x][y].num_adjacent_mines = self.countAdjacentMines(x, y)
-
-
-    def countAdjacentMines(self, x, y):
-        adjacent_mines_count = 0
-        adjacent_cells_coords = self.getAdjacentCellsCoords(x, y)
-
-        for coords in adjacent_cells_coords:
-            x, y = coords
-            cell = self.grid[x][y]
-            if cell.is_mine:
-                adjacent_mines_count += 1
-
-        return adjacent_mines_count
-
-
-    def getAdjacentCellsCoords(self, x, y, exclude_diagonals=False):
-        max_x = self.config['columns'] - 1
-        max_y = self.config['rows'] - 1
-
-        adjacent_cells = []
-
-        for i in [-1, 0, 1]:
-            new_x = x + i
-
-            # Out of bounds, no cell exists there.
-            if new_x < 0 or new_x > max_x:
-                continue
-
-            for j in [-1, 0, 1]:
-                new_y = y + j
-
-                # Out of bounds, no cell exists there.
-                if new_y < 0 or new_y > max_y:
-                    continue
-                
-                # We want adjacent cells, not the cell itself
-                if new_x == x and new_y == y:
-                    continue
-                
-                if exclude_diagonals and abs(i) == abs(j):
-                    continue
-
-                adjacent_cell = (new_x, new_y)
-                adjacent_cells.append(adjacent_cell)
-
-        return adjacent_cells
-    
 
 class Executor():
     def __init__(self, game, num_games):
         self.game = game
-        self.num_games = num_games
+        self.games_left = num_games
 
 
     def getGameConfig(self):
         return self.game.config
 
 
-    def getGrid(self):
-        return self.game.grid
+    def getGridAndMinesLeftAndState(self):
+        return (self.game.grid, self.game.mines_left, self.game.state)
 
 
-    def makeMove(self, x, y, toggle_flag):
-        out_of_bounds = (x < 0) or (y < 0) or (x >= self.game.config['rows']) or (y >= self.game.config['columns'])
+    ''' Input: action as a tuple (x, y, toggle_flag), where x, y is the 0-based coordinates
+        of the tile to interact with, and toggle_flag is a boolean indiciating whether to toggle flag
+        status of the cell or to click the cell.
+        An action that is an integer -1 indicates the user chose to force reset the game.
 
-        if out_of_bounds or self.game.grid[x][y].uncovered:
-            return (self.game.grid, GameState.ILLEGAL_MOVE)
-
-        game_state = self.processMove(x, y, toggle_flag)
-
-        if game_state = 
-        return (self.game.grid, game_state)
-
-    
-    # Assumes input is a legal move
-    def processMove(self, x, y, toggle_flag):
-        if toggle_flag:
-            self.game.grid[x][y].is_flagged = not self.game.grid[x][y].is_flagged
-        else:
-            if self.game.grid[x][y].is_mine:
-                self.game.grid[x][y].uncovered = True
-                return GameState.LOST
-            
-            self.uncover(x, y)
-
-            if self.gameWon():
-                return GameState.WON
+        If game is in a finished state, then a call to this method will trigger a reset of the game, and
+        return the appropriate grid and state. In this case the action is ignored.
         
-        return GameState.PLAYING
+        Returns: (grid, mines_left, game_state) as they are after the move has been made,
+                 or returns None if all games have been finished, regardless of input.'''
+    def makeMove(self, action):
+        if self.games_left <= 0:
+            return None
+        
+        in_end_game_state = self.game.state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]
+        force_reset = (action == -1)
+
+        if in_end_game_state or force_reset:
+            self.game.reset()
+            self.games_left -= 1
+
+            if self.games_left <= 0:
+                # Final game just finished. Return None to indicate this.
+                return None
+        elif self.isLegalMove(action):
+            self.processMove(action)
+        else:
+            self.game.state = Game.State.ILLEGAL_MOVE
+
+        return (self.game.grid, self.game.mines_left, self.game.state)
+
+
+    def isLegalMove(self, action):
+        (x, y, toggle_flag) = action
+
+        out_of_bounds = (x < 0) or (y < 0) or (x >= self.game.config['rows']) or (y >= self.game.config['columns'])
+        
+        if out_of_bounds or self.game.grid[x][y].uncovered:
+            return False
+        
+        if not toggle_flag and self.game.grid[x][y].is_flagged:
+            return False
+        
+        return True
     
+    
+    # Assumes input is a legal move. Changes game grid and game state based on action.
+    def processMove(self, action):
+        (x, y, toggle_flag) = action
+
+        if toggle_flag:
+            self.toggleFlag(x, y)
+            is_end_of_game = False  
+        else:
+            is_end_of_game = self.clickMine(x, y)
+        
+        # Toggle flag should not change game state from START to PLAY.
+        # If it's end of game, state should not be overwritten back to PLAY.
+        if not is_end_of_game and not toggle_flag:
+            self.game.state = Game.State.PLAY
+    
+
+    # Changes game grid (one cell gets flagged/unflagged).
+    def toggleFlag(self, x, y):
+        if self.game.grid[x][y].is_flagged:
+            self.game.grid[x][y].is_flagged = False
+            self.game.mines_left += 1
+        else:
+            self.game.grid[x][y].is_flagged = True
+            self.game.mines_left -= 1
+
+
+    # Returns boolean indicating whether game has been finished or not.
+    # Method changes game's grid and state.
+    def clickMine(self, x, y):
+        end_of_game = False
+
+        if self.game.grid[x][y].is_mine:
+            self.game.grid[x][y].uncovered = True
+            self.game.state = Game.State.LOSE
+            end_of_game = True
+        else:
+            self.uncover(x, y)
+            
+            if self.gameWon():
+                self.game.state = Game.State.WIN
+                end_of_game = True
+    
+        return end_of_game
+
 
     def uncover(self, initial_x, initial_y):
         cells_to_uncover = [(initial_x, initial_y)]
@@ -171,13 +115,14 @@ class Executor():
         while cells_to_uncover:
             x, y = cells_to_uncover.pop(0)
             cell = self.game.grid[x][y]
+
             cell.uncovered = True
 
             if cell.num_adjacent_mines == 0:
                 adjacent_cells_coords = self.game.getAdjacentCellsCoords(x, y)
 
                 for x, y in adjacent_cells_coords:
-                    if self.game.grid[x][y].uncovered == False:
+                    if self.game.grid[x][y].uncovered == False and not self.game.grid[x][y].is_flagged:
                         if not (x, y) in cells_to_uncover:
                             cells_to_uncover.append((x, y))
     
@@ -194,17 +139,30 @@ class Executor():
     
     def forceResetGame(self):
         self.game.reset()
-        return self.game.grid, GameState.PLAYING
-            
-class GameState(Enum):
-    WON = 1
-    LOST = 2
-    PLAYING = 3
-    STARTING = 4
-    ILLEGAL_MOVE = 5
+        self.games_left -= 1
 
-    
-def run(agent=None, config={'rows':16, 'columns':16, 'num_mines':6}, num_games=1, visualise=True):
+        if self.games_left <= 0:
+            return None
+        else:
+            return (self.game.grid, self.game.mines_left, self.game.state)
+
+            
+def playGames(executor, renderer, verbose):
+    # Start of all games. Start renderer and get agent's very first move.
+    action = renderer.getNextMoveFromAgent()
+
+    # Play until all games are finished
+    while result := executor.makeMove(action):
+        if verbose:
+            print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
+
+        renderer.updateFromResult(result)
+        action = renderer.getNextMoveFromAgent()
+
+    renderer.onEndOfGames()
+
+
+def run(agent=None, config={'rows':16, 'columns':16, 'num_mines':6}, num_games=500, visualise=True, verbose=1):
     # If user is going to manually play, then they have to see the board.
     if not agent:
         visualise = True
@@ -213,11 +171,17 @@ def run(agent=None, config={'rows':16, 'columns':16, 'num_mines':6}, num_games=1
     executor = Executor(game, num_games)
 
     if visualise:
-        renderer = PygameRenderer(executor)
-        renderer.takeControl()
+        renderer = PygameRenderer(config, game.grid, agent)
     else:
-        print("No-visualise mode not implemented")
-            
+        renderer = NoScreenRenderer(config, game.grid, agent)
+
+    playGames(executor, renderer, verbose)
+    
+ 
 
 if __name__ == '__main__':
-    run()
+    random_agent = RandomAgent()
+    random_legal_agent = RandomLegalMovesAgent()
+    # run(random_agent)
+    run(random_legal_agent, visualise=False, verbose=2)
+    # run()
