@@ -2,9 +2,11 @@ import random
 from enum import Enum
 
 class Cell:
-    def __init__(self, is_mine=False):
-        self.uncovered = False
+    def __init__(self, pos, is_mine=False):
+        self.x = pos[0]
+        self.y = pos[1]
         self.is_mine = is_mine
+        self.uncovered = False
         self.is_flagged = False
         self.num_adjacent_mines = 0
 
@@ -40,22 +42,28 @@ class Game:
     def createMinelessGrid(self):
         self.grid = []
 
-        for _ in range(self.config['columns']):
-            column = []
+        for y in range(self.config['rows']):
+            row = []
 
-            for _ in range(self.config['rows']):
-                square = Cell(is_mine=False)
-                column.append(square)
+            for x in range(self.config['columns']):
+                pos = (x, y)
+                square = Cell(pos, is_mine=False)
+                row.append(square)
             
-            self.grid.append(column)
+            self.grid.append(row)
 
 
+    '''
+        Using convention that max number of mines on a QxP grid is (Q-1)(P-1),
+        in accordance to custom ranking rules on http://www.minesweeper.info/custom.php
+        and Window's minesweeper implementation http://www.minesweeper.info/wiki/Windows_Minesweeper#Trivia
+    '''
     def populateGridWithMines(self):
-        total_slots = self.config['rows'] * self.config['columns']
+        max_mines = (self.config['rows'] - 1) * (self.config['columns'] - 1)
 
-        if self.config['num_mines'] > total_slots:
-            raise Exception("Too many mines! Cannot fit {} mines into a {}x{} grid (which has only {} cells)"
-        .format(self.config['num_mines'], self.config['rows'], self.config['columns'], total_slots))
+        if self.config['num_mines'] > max_mines:
+            raise Exception("Too many mines! {0} mines exceeds limit of {1} for a {2}x{3} grid ({2}x{3}={1})"
+        .format(self.config['num_mines'], max_mines, self.config['rows'], self.config['columns'], max_mines))
 
         for _ in range(self.config['num_mines']):
             self.placeMineInRandomEmptySquare()   
@@ -69,15 +77,15 @@ class Game:
             x = random.randrange(0, self.config['columns'])
             y = random.randrange(0, self.config['rows'])
 
-            if not self.grid[x][y].is_mine:
-                self.grid[x][y].is_mine = True
+            if not self.grid[y][x].is_mine:
+                self.grid[y][x].is_mine = True
                 mine_placed = True
 
 
     def markGridSquaresWithMineProximityCount(self):
         for x in range(self.config['columns']):
             for y in range(self.config['rows']):
-                self.grid[x][y].num_adjacent_mines = self.countAdjacentMines(x, y)
+                self.grid[y][x].num_adjacent_mines = self.countAdjacentMines(x, y)
 
 
     def countAdjacentMines(self, x, y):
@@ -86,7 +94,8 @@ class Game:
 
         for coords in adjacent_cells_coords:
             x, y = coords
-            cell = self.grid[x][y]
+            cell = self.grid[y][x]
+
             if cell.is_mine:
                 adjacent_mines_count += 1
 
@@ -125,7 +134,6 @@ class Game:
 
         return adjacent_cells
         
-
 
     class State(Enum):
         START = 1

@@ -1,9 +1,10 @@
 import pygame
 import os
-from spritesheet import Spritesheet
 from enum import Enum
 from Game import Game
 from Renderer import Renderer
+from CBRAgent import CBRAgent
+
 
 
 class PygameRenderer(Renderer):
@@ -21,6 +22,7 @@ class PygameRenderer(Renderer):
         self.object_being_held_info = None
         self.mouse_being_held = False
         self.last_tile_action_coords = None
+        self.sample = None
 
         # Constants
         self.SPRITES_FOLDER_PATH = "sprites/"
@@ -51,7 +53,7 @@ class PygameRenderer(Renderer):
 
         self.sprites['background'] = self.generateScaledBackground()
 
-        screen_width = self.sprites['background'].get_width()
+        screen_width = self.sprites['background'].get_width() + 280
         screen_height = self.sprites['background'].get_height()
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         
@@ -230,6 +232,8 @@ class PygameRenderer(Renderer):
             x, y, _ = agentAction
             self.last_tile_action_coords = (x, y)
 
+            
+
         return agentAction
 
 
@@ -313,13 +317,13 @@ class PygameRenderer(Renderer):
         (x, y) = grid_obj.getCellCoordinatesAtPositionOnScreen(pos)
 
         # Clicking an uncovered cell is an illegal move. Ignore it.
-        if self.grid[x][y].uncovered:
+        if self.grid[y][x].uncovered:
             return None
         
         toggle_flag = (event.button == MouseButton.RIGHT.value)
         
         # Trying to uncover a flagged cell is an illegal move. Ignore it.
-        if not toggle_flag and self.grid[x][y].is_flagged:
+        if not toggle_flag and self.grid[y][x].is_flagged:
             return None
 
         # Start clock event on first cell uncovering
@@ -373,6 +377,10 @@ class PygameRenderer(Renderer):
         for obj in self.rendered_objects:
             obj.draw()
         
+        # DEBUG SAMPLE THING
+        if self.sample:
+            self.visualiseSample(self.sample)
+
         pygame.display.flip()
 
 
@@ -432,6 +440,59 @@ class PygameRenderer(Renderer):
     def onEndOfGames(self):
         print("onEndOfGames NOT YET IMPLEMENTED")
         pygame.quit()
+
+    
+    def initialiseSampleScreen(self, sample):
+        if not pygame.get_init():
+            pygame.init()
+        
+        pygame.display.set_caption("Sample")
+
+        TILE_SIZE = 16
+
+        screen_width = TILE_SIZE * len(sample[0])
+        screen_height = TILE_SIZE * len(sample)
+
+        screen = pygame.display.set_mode((screen_width, screen_height))
+
+        return screen
+
+
+    def createSurfaceFromSample(self, sample):
+        TILE_SIZE = 16
+
+        surface_width = TILE_SIZE * len(sample[0])
+        surface_height = TILE_SIZE * len(sample)
+
+        surface = pygame.Surface((surface_width, surface_height))
+
+        for y in range(len(sample)):
+            for x in range(len(sample[0])):
+                cell_representation = sample[y][x]
+
+                if cell_representation == '-':
+                    sprite = self.sprites['tile_covered']
+                elif cell_representation == 'F':
+                    sprite = self.sprites['tile_flag']
+                elif cell_representation == 'W':
+                    grey_tile = pygame.Surface((TILE_SIZE, TILE_SIZE))
+                    grey_tile.fill((200, 200, 200))
+                    sprite = grey_tile
+                elif cell_representation == '0':
+                    sprite = self.sprites['tile_uncovered']
+                else:
+                    sprite_name = 'tile_' + cell_representation
+                    sprite = self.sprites[sprite_name]
+
+                pos = (TILE_SIZE * x, TILE_SIZE * y)
+                surface.blit(sprite, pos)
+
+        return surface
+
+
+    def visualiseSample(self, sample):
+        sample_surface = self.createSurfaceFromSample(sample)
+        self.screen.blit(sample_surface, (self.sprites['background'].get_width() + 6, 0))
     
 
 class Counter():
@@ -577,7 +638,7 @@ class Grid():
 
         for x in range(self.columns):
             for y in range(self.rows):
-                cell = self.grid[x][y]
+                cell = self.grid[y][x]
                 sprite = self.getCellSprite(cell, x, y)
                 
                 # Cell position is relative to the grid surface, not overall screen
