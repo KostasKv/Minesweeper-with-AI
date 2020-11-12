@@ -18,7 +18,7 @@ class Game:
 
         try:
             self.throwExceptionOnInvalidConfig(config)
-        except:
+        except ValueError:
             print("Configuration is invalid!")
         
         self.state = None
@@ -26,7 +26,8 @@ class Game:
         self.reset()
 
 
-    def throwExceptionOnInvalidConfig(self, config):
+    @staticmethod
+    def throwExceptionOnInvalidConfig(config):
         pass
 
 

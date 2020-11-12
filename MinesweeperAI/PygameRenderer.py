@@ -3,8 +3,6 @@ import os
 from enum import Enum
 from Game import Game
 from Renderer import Renderer
-from CBRAgent import CBRAgent
-
 
 
 class PygameRenderer(Renderer):
@@ -22,10 +20,13 @@ class PygameRenderer(Renderer):
         self.object_being_held_info = None
         self.mouse_being_held = False
         self.last_tile_action_coords = None
-        self.sample = None
 
-        # Constants
-        self.SPRITES_FOLDER_PATH = "sprites/"
+        # Assumes sprites folder is in the same directory as this script.
+        dir_this_script_is_in = os.path.dirname(os.path.realpath(__file__))
+        sprite_folder_path = dir_this_script_is_in + "\\sprites\\"
+
+        # Constants 
+        self.SPRITES_FOLDER_PATH = sprite_folder_path
         self.TILE_SIZE = 16
         self.CLOCK_TICK_EVENT = pygame.USEREVENT + 1
         self.AGENT_TRIGGER_EVENT = pygame.USEREVENT + 2
@@ -53,7 +54,7 @@ class PygameRenderer(Renderer):
 
         self.sprites['background'] = self.generateScaledBackground()
 
-        screen_width = self.sprites['background'].get_width() + 280
+        screen_width = self.sprites['background'].get_width()
         screen_height = self.sprites['background'].get_height()
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         
@@ -376,10 +377,6 @@ class PygameRenderer(Renderer):
 
         for obj in self.rendered_objects:
             obj.draw()
-        
-        # DEBUG SAMPLE THING
-        if self.sample:
-            self.visualiseSample(self.sample)
 
         pygame.display.flip()
 
@@ -440,59 +437,6 @@ class PygameRenderer(Renderer):
     def onEndOfGames(self):
         print("onEndOfGames NOT YET IMPLEMENTED")
         pygame.quit()
-
-    
-    def initialiseSampleScreen(self, sample):
-        if not pygame.get_init():
-            pygame.init()
-        
-        pygame.display.set_caption("Sample")
-
-        TILE_SIZE = 16
-
-        screen_width = TILE_SIZE * len(sample[0])
-        screen_height = TILE_SIZE * len(sample)
-
-        screen = pygame.display.set_mode((screen_width, screen_height))
-
-        return screen
-
-
-    def createSurfaceFromSample(self, sample):
-        TILE_SIZE = 16
-
-        surface_width = TILE_SIZE * len(sample[0])
-        surface_height = TILE_SIZE * len(sample)
-
-        surface = pygame.Surface((surface_width, surface_height))
-
-        for y in range(len(sample)):
-            for x in range(len(sample[0])):
-                cell_representation = sample[y][x]
-
-                if cell_representation == '-':
-                    sprite = self.sprites['tile_covered']
-                elif cell_representation == 'F':
-                    sprite = self.sprites['tile_flag']
-                elif cell_representation == 'W':
-                    grey_tile = pygame.Surface((TILE_SIZE, TILE_SIZE))
-                    grey_tile.fill((200, 200, 200))
-                    sprite = grey_tile
-                elif cell_representation == '0':
-                    sprite = self.sprites['tile_uncovered']
-                else:
-                    sprite_name = 'tile_' + cell_representation
-                    sprite = self.sprites[sprite_name]
-
-                pos = (TILE_SIZE * x, TILE_SIZE * y)
-                surface.blit(sprite, pos)
-
-        return surface
-
-
-    def visualiseSample(self, sample):
-        sample_surface = self.createSurfaceFromSample(sample)
-        self.screen.blit(sample_surface, (self.sprites['background'].get_width() + 6, 0))
     
 
 class Counter():
@@ -595,8 +539,8 @@ class Grid():
         self.sprites = sprites
         self.tile_size = tile_size
         self.grid = grid
-        self.rows = len(grid[0])
-        self.columns = len(grid)
+        self.rows = len(grid)
+        self.columns = len(grid[0])
         self.rect = self.initialiseRect(pos)
         self.TILE_NUM_TO_SPRITE_NAME = ["tile_uncovered", "tile_1", "tile_2", "tile_3", "tile_4", "tile_5", "tile_6", "tile_7", "tile_8"]
         self.cell_being_held_coordinates = None
