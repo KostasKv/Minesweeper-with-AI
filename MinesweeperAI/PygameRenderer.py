@@ -30,7 +30,7 @@ class PygameRenderer(Renderer):
         self.TILE_SIZE = 16
         self.CLOCK_TICK_EVENT = pygame.USEREVENT + 1
         self.AGENT_TRIGGER_EVENT = pygame.USEREVENT + 2
-        self.AGENT_TIME_BETWEEN_MOVES = 1000
+        self.AGENT_TIME_BETWEEN_MOVES = 5
         self.ONE_SECOND = 1000
         self.NO_TIMER = 0
         self.ACTION_RESET_GAME = -1
@@ -215,6 +215,7 @@ class PygameRenderer(Renderer):
     def initialiseAgent(self):
         if self.agent:
             self.agent.update(self.grid, self.mines_left, self.game_state)
+            self.agent.onGameBegin()
 
             pygame.time.set_timer(self.AGENT_TRIGGER_EVENT, self.AGENT_TIME_BETWEEN_MOVES)
 
@@ -386,6 +387,9 @@ class PygameRenderer(Renderer):
 
         if self.agent:
             self.agent.update(self.grid, self.mines_left, self.game_state)
+
+            if self.game_state == Game.State.START:
+                self.agent.onGameBegin()
         
         if self.game_state in [Game.State.LOSE, Game.State.WIN, Game.State.ILLEGAL_MOVE]:
             pygame.time.set_timer(self.CLOCK_TICK_EVENT, self.NO_TIMER)    # Stop the clock by disabling timer event

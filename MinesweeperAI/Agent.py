@@ -7,5 +7,5 @@ class Agent(ABC):
     def update(self, grid, mines_left, game_state):
         pass
 
-    def onGameReset(self):
+    def onGameBegin(self):
         pass

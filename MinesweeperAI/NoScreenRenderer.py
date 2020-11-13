@@ -12,22 +12,23 @@ class NoScreenRenderer(Renderer):
 
 
     def initialiseAgent(self):
-        mines_left = self.config['num_mines']
-        self.agent.update(self.grid, mines_left, self.game_state)
+        self.agent.update(self.grid, self.config['num_mines'], self.game_state)
+        self.agent.onGameBegin()
 
 
     def getNextMoveFromAgent(self):
-        if self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]:
-            action = -1     # End of game so signal for game reset
+        if self.game_state in [Game.State.PLAY, Game.State.START]:
+            return self.agent.nextMove()
         else:
-            action = self.agent.nextMove()
-        
-        return action
+            return -1     # End of game so signal for game reset
 
     
     def updateFromResult(self, result):
         self.game_state = result[2]
         self.agent.update(*result)
+
+        if self.game_state == Game.State.START:
+            self.agent.onGameBegin()
 
 
     def onEndOfGames(self):

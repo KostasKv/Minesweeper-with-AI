@@ -1,5 +1,6 @@
 from Agent import Agent
 from random import randint
+from itertools import chain
 
 
 class RandomAgent(Agent):
@@ -13,44 +14,61 @@ class RandomAgent(Agent):
         self.mines_left = mines_left
         self.game_state = game_state
 
-    def onGameReset(self):
-        print("onGameReset")
+    def onGameBegin(self):
         pass
 
 
 class RandomLegalMovesAgent(Agent):
     def nextMove(self):
-        x = randint(0, len(self.grid) - 1)
-        y = randint(0, len(self.grid[0]) - 1)
+        # print("grid is ({}, {})".format(len(self.grid)))
+        x = randint(0, len(self.grid[0]) - 1)
+        y = randint(0, len(self.grid) - 1)
 
-        while not self.isLegal(x, y):
-            x = randint(0, len(self.grid) - 1)
-            y = randint(0, len(self.grid[0]) - 1)
+        while self.isIlegal(x, y):
+            x = randint(0, len(self.grid[0]) - 1)
+            y = randint(0, len(self.grid) - 1)
 
         return (x, y, False)
 
-    def isLegal(self, x, y):
+    def isIlegal(self, x, y):
         toggle_flag = False
 
         # Out of bounds
-        if x < 0 or y < 0 or x > len(self.grid) or y > len(self.grid[0]):
-            return False
-        
-        # Tile already uncovered
-        if self.grid[x][y].uncovered:
-            return False
-        
-        # Can't uncover a flagged tile
-        if not toggle_flag and self.grid[x][y].is_flagged:
-            return False
+        if x < 0 or y < 0 or x > len(self.grid[0]) or y > len(self.grid):
+            return True
 
-        return True
+        # Tile already uncovered
+        if self.grid[y][x].uncovered:
+            return True
+
+        # Can't uncover a flagged tile
+        if not toggle_flag and self.grid[y][x].is_flagged:
+            return True
+
+        return False
 
     def update(self, grid, mines_left, game_state):
         self.grid = grid
         self.mines_left = mines_left
         self.game_state = game_state
 
-    def onGameReset(self):
-        print("onGameReset")
+    def onGameBegin(self):
         pass
+
+
+
+class PickFirstUncoveredAgent(Agent):
+    def nextMove(self):
+        for tile in self.tiles_not_checked:
+            if not tile.uncovered and not tile.is_mine:
+                return (tile.x, tile.y, False)
+
+    def update(self, grid, mines_left, game_state):
+        self.grid = grid
+        self.mines_left = mines_left
+        self.game_state = game_state
+
+    def onGameBegin(self):
+        # Flatten grid to a 1D list
+        self.tiles_not_checked = list(chain.from_iterable(self.grid))
+        

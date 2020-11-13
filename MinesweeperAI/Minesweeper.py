@@ -1,7 +1,7 @@
 from Game import Game, Cell
 from PygameRenderer import PygameRenderer
 from NoScreenRenderer import NoScreenRenderer
-from ExampleAgents import RandomAgent, RandomLegalMovesAgent
+from ExampleAgents import RandomAgent, RandomLegalMovesAgent, PickFirstUncoveredAgent
 from CBRAgent1 import CBRAgent1
 
 
@@ -167,7 +167,7 @@ def playGames(executor, renderer, verbose):
     renderer.onEndOfGames()
 
 
-def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=500, visualise=True, verbose=1, seed=None):
+def run(agent=None, config={'rows':16, 'columns':30, 'num_mines':99}, num_games=10, visualise=True, verbose=1, seed=None):
     # If user is going to manually play, then they have to see the board.
     if not agent:
         visualise = True
@@ -186,10 +186,12 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=50
 if __name__ == '__main__':
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
+    pick_first_uncovered_agent = PickFirstUncoveredAgent()
     cbr_agent_1 = CBRAgent1()
 
-    # # run(random_agent)
-    # run(random_legal_agent, visualise=False, verbose=2)
-    run(verbose=1, seed=57)
+    # run(random_agent)
+    # run(random_legal_agent, visualise=False, verbose=False, num_games=1000)
+    run(pick_first_uncovered_agent, visualise=False, verbose=False, num_games=5000)
+    # run(verbose=1, seed=57)
     # run(cbr_agent_1, visualise=True, verbose=True)
 
