@@ -1,6 +1,7 @@
 from Agent import Agent
 from random import randint
 
+
 class RandomAgent(Agent):
     def nextMove(self):
         x = randint(0, len(self.grid) - 1)
@@ -28,7 +29,6 @@ class RandomLegalMovesAgent(Agent):
 
         return (x, y, False)
 
-
     def isLegal(self, x, y):
         toggle_flag = False
 
@@ -46,12 +46,10 @@ class RandomLegalMovesAgent(Agent):
 
         return True
 
-
     def update(self, grid, mines_left, game_state):
         self.grid = grid
         self.mines_left = mines_left
         self.game_state = game_state
-
 
     def onGameReset(self):
         print("onGameReset")

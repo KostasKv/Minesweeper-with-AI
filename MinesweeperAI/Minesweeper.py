@@ -160,18 +160,19 @@ def playGames(executor, renderer, verbose):
         if verbose:
             print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
 
+
         renderer.updateFromResult(result)
         action = renderer.getNextMoveFromAgent()
 
     renderer.onEndOfGames()
 
 
-def run(agent=None, config={'rows':50, 'columns':100, 'num_mines':1000}, num_games=500, visualise=True, verbose=1):
+def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=500, visualise=True, verbose=1, seed=None):
     # If user is going to manually play, then they have to see the board.
     if not agent:
         visualise = True
 
-    game = Game(config)
+    game = Game(config, seed)
     executor = Executor(game, num_games)
 
     if visualise:
@@ -189,6 +190,6 @@ if __name__ == '__main__':
 
     # # run(random_agent)
     # run(random_legal_agent, visualise=False, verbose=2)
-    run(verbose=1)
+    run(verbose=1, seed=57)
     # run(cbr_agent_1, visualise=True, verbose=True)
 

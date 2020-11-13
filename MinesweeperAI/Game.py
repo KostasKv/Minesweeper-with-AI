@@ -1,6 +1,7 @@
 import random
 from enum import Enum
 
+
 class Cell:
     def __init__(self, pos, is_mine=False):
         self.x = pos[0]
@@ -12,33 +13,54 @@ class Cell:
 
 
 class Game:
-    def __init__(self, config):
-        # Dict consisting of keys: 'rows', 'columns', and 'num_mines'
-        self.config = config    
-
-        try:
-            self.throwExceptionOnInvalidConfig(config)
-        except ValueError:
-            print("Configuration is invalid!")
-        
+    def __init__(self, config, seed=None):
+        self.config = config
+        self.raiseErrorOnInvalidConfig(config) # Abruptly stops if invalid.
+        random.seed(seed)
         self.state = None
         self.mines_left = None
         self.reset()
 
 
     @staticmethod
-    def throwExceptionOnInvalidConfig(config):
-        pass
+    def raiseErrorOnInvalidConfig(config):
+        if not isinstance(config, dict):
+            raise TypeError("Game configuration must be a dict object.")
+        
+        # Check keys
+        required_keys = ['rows', 'columns', 'num_mines']
 
+        if any(key not in config for key in required_keys):
+            raise KeyError("Game configuration needs the following keys: {}".format(', '.join(required_keys)))
+        
+        # Check all values are positive
+        if any(value <= 0 for value in config.values()):
+            raise ValueError("All game configuration values must be positive")
+
+        # Check grid isn't too small, i.e. dimensions are Nx1 or 1xM
+        if config['rows'] <= 1 or config ['columns'] <= 1:
+            raise ValueError("Grid too small! It must have atleast 2 rows and 2 columns.")
+
+        # Check num_mines doesn't exceed limit (X-1)(Y-1), where grid is of dimensions (X, Y).
+        max_mines = (config['rows'] - 1) * (config['columns'] - 1)
+        
+        if config['num_mines'] > max_mines:
+            template = "Too many mines! {0} mines exceeds limit of {1} for a {2}x{3} grid: ({2}-1)*({3}-1) = {1} mines max."
+            message = template.format(config['num_mines'], max_mines, config['rows'], config['columns'], max_mines)
+            raise ValueError(message)
+        
 
     def reset(self):
+        self.generateNewGrid()
+        self.state = self.State.START
+        self.mines_left = self.config['num_mines']
+
+
+    def generateNewGrid(self):
         self.createMinelessGrid()
         self.populateGridWithMines()
         self.markGridSquaresWithMineProximityCount()
 
-        self.state = self.State.START
-        self.mines_left = self.config['num_mines']
-        
 
     def createMinelessGrid(self):
         self.grid = []
@@ -58,13 +80,10 @@ class Game:
         Using convention that max number of mines on a QxP grid is (Q-1)(P-1),
         in accordance to custom ranking rules on http://www.minesweeper.info/custom.php
         and Window's minesweeper implementation http://www.minesweeper.info/wiki/Windows_Minesweeper#Trivia
+
+        Method assumes Game's configuration is valid
     '''
     def populateGridWithMines(self):
-        max_mines = (self.config['rows'] - 1) * (self.config['columns'] - 1)
-
-        if self.config['num_mines'] > max_mines:
-            raise Exception("Too many mines! {0} mines exceeds limit of {1} for a {2}x{3} grid ({2}x{3}={1})"
-        .format(self.config['num_mines'], max_mines, self.config['rows'], self.config['columns'], max_mines))
 
         for _ in range(self.config['num_mines']):
             self.placeMineInRandomEmptySquare()   
@@ -134,7 +153,7 @@ class Game:
                 adjacent_cells.append(adjacent_cell)
 
         return adjacent_cells
-        
+
 
     class State(Enum):
         START = 1
