@@ -30,7 +30,7 @@ class PygameRenderer(Renderer):
         self.TILE_SIZE = 16
         self.CLOCK_TICK_EVENT = pygame.USEREVENT + 1
         self.AGENT_TRIGGER_EVENT = pygame.USEREVENT + 2
-        self.AGENT_TIME_BETWEEN_MOVES = 5
+        self.AGENT_TIME_BETWEEN_MOVES = 1000
         self.ONE_SECOND = 1000
         self.NO_TIMER = 0
         self.ACTION_RESET_GAME = -1
@@ -316,19 +316,19 @@ class PygameRenderer(Renderer):
         if self.agent or (self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]):
             return None
 
-        (x, y) = grid_obj.getCellCoordinatesAtPositionOnScreen(pos)
+        (x, y) = grid_obj.getTileCoordinatesAtPositionOnScreen(pos)
 
-        # Clicking an uncovered cell is an illegal move. Ignore it.
+        # Clicking an uncovered tile is an illegal move. Ignore it.
         if self.grid[y][x].uncovered:
             return None
         
         toggle_flag = (event.button == MouseButton.RIGHT.value)
         
-        # Trying to uncover a flagged cell is an illegal move. Ignore it.
+        # Trying to uncover a flagged tile is an illegal move. Ignore it.
         if not toggle_flag and self.grid[y][x].is_flagged:
             return None
 
-        # Start clock event on first cell uncovering
+        # Start clock event on first tile uncovering
         if self.game_state == Game.State.START and not toggle_flag:
             pygame.time.set_timer(self.CLOCK_TICK_EVENT, self.ONE_SECOND) 
 
@@ -547,7 +547,7 @@ class Grid():
         self.columns = len(grid[0])
         self.rect = self.initialiseRect(pos)
         self.TILE_NUM_TO_SPRITE_NAME = ["tile_uncovered", "tile_1", "tile_2", "tile_3", "tile_4", "tile_5", "tile_6", "tile_7", "tile_8"]
-        self.cell_being_held_coordinates = None
+        self.tile_being_held_coordinates = None
         self.game_state = game_state
         self.mine_clicked_coords = None
         self.is_agent = is_agent
@@ -566,12 +566,12 @@ class Grid():
 
         if object_being_held_info and isinstance(object_being_held_info['object'], Grid):
             pos = object_being_held_info['mouse_pos']
-            self.cell_being_held_coordinates = self.getCellCoordinatesAtPositionOnScreen(pos)
+            self.tile_being_held_coordinates = self.getTileCoordinatesAtPositionOnScreen(pos)
         else:
-            self.cell_being_held_coordinates = None
+            self.tile_being_held_coordinates = None
 
 
-    def getCellCoordinatesAtPositionOnScreen(self, pos):
+    def getTileCoordinatesAtPositionOnScreen(self, pos):
         grid_x = pos[0] - self.rect.x
         grid_y = pos[1] - self.rect.y
 
@@ -586,45 +586,45 @@ class Grid():
 
         for x in range(self.columns):
             for y in range(self.rows):
-                cell = self.grid[y][x]
-                sprite = self.getCellSprite(cell, x, y)
+                tile = self.grid[y][x]
+                sprite = self.getTileSprite(tile, x, y)
                 
-                # Cell position is relative to the grid surface, not overall screen
-                cell_x = self.tile_size * x
-                cell_y = self.tile_size * y
-                cell_top_left_pos = (cell_x, cell_y)
+                # Tile position is relative to the grid surface, not overall screen
+                tile_x = self.tile_size * x
+                tile_y = self.tile_size * y
+                tile_top_left_pos = (tile_x, tile_y)
 
-                grid_surface.blit(sprite, cell_top_left_pos)
+                grid_surface.blit(sprite, tile_top_left_pos)
         
         self.screen.blit(grid_surface, self.rect)
 
 
-    def getCellSprite(self, cell, x, y):
-        if cell.uncovered:
-            if cell.is_mine:
+    def getTileSprite(self, tile, x, y):
+        if tile.uncovered:
+            if tile.is_mine:
                 sprite = self.sprites['tile_mine']
             else:
-                sprite_name = self.TILE_NUM_TO_SPRITE_NAME[cell.num_adjacent_mines]
+                sprite_name = self.TILE_NUM_TO_SPRITE_NAME[tile.num_adjacent_mines]
                 sprite = self.sprites[sprite_name]
         else:
-            if cell.is_flagged:
+            if tile.is_flagged:
                 sprite = self.sprites['tile_flag']
-            elif self.cell_being_held_coordinates == (x, y) and (self.game_state in [Game.State.START, Game.State.PLAY]) and not self.is_agent:
+            elif self.tile_being_held_coordinates == (x, y) and (self.game_state in [Game.State.START, Game.State.PLAY]) and not self.is_agent:
                 sprite = self.sprites['tile_uncovered'] 
             else:
                 sprite = self.sprites['tile_covered']
         
         # End of game
         if self.game_state == Game.State.WIN:
-            if cell.is_mine:
+            if tile.is_mine:
                 sprite = self.sprites['tile_flag']
         elif self.game_state == Game.State.LOSE:
-            if cell.is_mine:
+            if tile.is_mine:
                 if self.mine_clicked_coords == (x, y):
                     sprite = self.sprites['tile_mine_red']
                 else:
                     sprite = self.sprites['tile_mine']
-            elif cell.is_flagged:
+            elif tile.is_flagged:
                 sprite = self.sprites['tile_mine_crossed']
 
 

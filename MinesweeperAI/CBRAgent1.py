@@ -1,6 +1,6 @@
 from Agent import Agent
 from Game import Game
-from random import randint
+import random
 
 class Case:
     '''
@@ -16,7 +16,7 @@ class CBRAgent1(Agent):
     def __init__(self):
         self.case_base = []
         self.prev_case_with_mine_clicked = None
-        self.cases_with_flag = []
+        self.cases_with_flag_and_target_coords = []
         
         # Constants
         self.SAMPLE_ROWS = 5
@@ -26,61 +26,107 @@ class CBRAgent1(Agent):
 
 
     def nextMove(self):
-        # First click of a game is random
         if self.game_state == Game.State.START:
-            x, y = self.pickRandomCoordinates()
-            action = (x, y, False)
+            # First click of a game is random
+            action = self.getRandomLegalClickAction()
         else:
-            action = getNextMoveBasedOnPreviousCases()
+            action = self.chooseBestMove()
 
         return action
 
 
-    def pickRandomCoordinates(self):
-        x = randint(0, len(self.grid[0]))
-        y = randint(0, len(self.grid))
-        return (x, y)
+    def getRandomLegalClickAction(self):
+        x = random.randint(0, len(self.grid[0]))
+        y = random.randint(0, len(self.grid))
+
+        while self.isIllegalMove(x, y, False):
+            x = random.randint(0, len(self.grid[0]))
+            y = random.randint(0, len(self.grid))
+
+        return (x, y, False)
 
 
-    def getNextMoveBasedOnPreviousCases(self):
-        case, target_coords = self.scanGridForMostConfidentMoveAndGetItsSolution()
+    def isIllegalMove(self, x, y, toggle_flag):
+        # Out of bounds
+        if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
+            return True
+
+        # Tile already uncovered
+        if self.grid[y][x].uncovered:
+            return True
+
+        # Can't uncover a flagged tile
+        if not toggle_flag and self.grid[y][x].is_flagged:
+            return True
+
+        return False
+
+
+    def chooseBestMove(self):
+        case, target_coords = self.scanGridAndGetBestMove()
         
         flag_tile = case.solution
 
         # Remember case until its outcome is found out. For flagged cases, that's at the end
         # of a game. For mine clicks, that's immediately after the move has been made.
         if flag_tile:
-            self.cases_with_flag_and_target_tiles.append((case, target_coords))
+            self.cases_with_flag_and_target_coords.append((case, target_coords))
         else:
             self.prev_case_with_mine_clicked = case
 
         return (*target_coords, flag_tile)
 
 
-    def scanGridForMostConfidentMoveAndGetItsSolution(self):
+    def scanGridAndGetBestMove(self):
         frontier_tiles = self.getFrontierTiles()
 
+        if frontier_tiles:
+            tiles_to_choose_from = frontier_tiles
+        else:
+            tiles_to_choose_from = self.getAllCoveredNonFlaggedTiles()
+
+        if self.case_base:
+            case, target_coords = self.pickMostConfidentMoveFromTilesGetItsCaseWithSolution(tiles_to_choose_from)
+        else:
+            # No cases learned yet. Can't do any better than random.
+            case, target_coords = self.pickRandomMoveFromTilesAndGetItsCaseWithSolution(tiles_to_choose_from)
+
+        return (case, target_coords)
+            
+
+    def getAllCoveredNonFlaggedTiles(self):
+        covered_non_flagged_tiles = []
+
+        for row in self.grid:
+            for tile in row:
+                if not tile.uncovered and not tile.is_flagged:
+                    covered_non_flagged_tiles.append(tile)
+        
+        return covered_non_flagged_tiles
+
+
+    def pickMostConfidentMoveFromTilesGetItsCaseWithSolution(self, tiles):
         most_confident_option = (None, None, None, -1)
 
-        for tile in frontier_tiles:
-            case = convertToCase(tile)
-            similar_cases = self.retrieveSimilarCases(case)
-            (is_mine, confidence) = getSolutionAndConfidence(case, similar_cases)
-            print("mine: {}, confidence: {} ".format(is_mine, confidence))
+        for tile in tiles:
+            case = self.convertToCase(tile)
+            similar_cases_with_scores = self.retrieveSimilarCases(case)
+            (is_mine, confidence) = self.getSolutionAndConfidence(case, similar_cases_with_scores)
             # Certain about move; quit searching the grid and make the move.
             if confidence == 1.0:
                 most_confident_option = (case, tile, is_mine, confidence)
                 break
             
             # Keep track of which case on grid seems to have the most definite outcome
-            if confidence > most_confident_option.confidence:
+            if confidence > most_confident_option[3]:
                 most_confident_option = (case, tile, is_mine, confidence)
 
-        case, is_mine, target_tile, _ = most_confident_option
+        case, target_tile, is_mine, _ = most_confident_option
         
         case.solution = is_mine
+        coords = (target_tile.x, target_tile.y)
 
-        return case, target_tile
+        return case, coords
 
 
     def convertToCase(self, tile):
@@ -89,13 +135,24 @@ class CBRAgent1(Agent):
         return Case(problem, solution)
 
 
+    def pickRandomMoveFromTilesAndGetItsCaseWithSolution(self, tiles):
+        tile = random.choice(tiles)
+
+        case = self.convertToCase(tile)
+        case.solution = False # Guess no mine at tile, so click it.
+
+        coords = (tile.x, tile.y)
+
+        return (case, coords)
+
+
     def update(self, grid, mines_left, game_state):
         self.grid = grid
         self.mines_left = mines_left
         self.game_state = game_state
 
         if self.prev_case_with_mine_clicked:
-            choice_was_correct = self.game_state in [Game.State.PLAYING, Game.State.WIN]
+            choice_was_correct = self.game_state in [Game.State.PLAY, Game.State.WIN]
             self.reviseCase(self.prev_case_with_mine_clicked, choice_was_correct)
 
             self.prev_case_with_mine_clicked = None
@@ -138,10 +195,10 @@ class CBRAgent1(Agent):
             > W (wall).
     '''
     def getSampleAreaAroundTile(self, tile):
-        x_offsets = range(-SAMPLE_COLUMNS_MID, (SAMPLE_COLUMNS - SAMPLE_COLUMNS_MID))
-        y_offsets = range(-SAMPLE_ROWS_MID, (SAMPLE_ROWS - SAMPLE_ROWS_MID))
-        num_rows = len(self.grid[0])
-        num_columns = len(self.grid)
+        x_offsets = range(-self.SAMPLE_COLUMNS_MID, (self.SAMPLE_COLUMNS - self.SAMPLE_COLUMNS_MID))
+        y_offsets = range(-self.SAMPLE_ROWS_MID, (self.SAMPLE_ROWS - self.SAMPLE_ROWS_MID))
+        num_rows = len(self.grid)
+        num_columns = len(self.grid[0])
 
         sample = []
 
@@ -151,7 +208,7 @@ class CBRAgent1(Agent):
 
             # Out of bounds vertically. All tiles in rows are a wall.
             if (new_y < 0 or new_y >= num_rows):
-                column = ['W'] * SAMPLE_ROWS
+                column = ['W'] * self.SAMPLE_ROWS
                 sample.append(column)
                 continue
             
@@ -163,7 +220,7 @@ class CBRAgent1(Agent):
                     column.append('W')
                     continue
 
-                new_tile = grid[new_y][new_x]
+                new_tile = self.grid[new_y][new_x]
                 
                 if new_tile.uncovered:
                     tile_representation = str(new_tile.num_adjacent_mines)
@@ -191,12 +248,13 @@ class CBRAgent1(Agent):
         return frontier_tiles
     
     
-    # Frontier tiles are those who have an adjacent uncovered tile
+    # Frontier tiles are covered non-flagged tiles which also have atleast one adjacent uncovered tile
     def isFrontierTile(self, tile):
+        if tile.uncovered or tile.is_flagged:
+            return False
+
         num_rows = len(self.grid)
         num_columns = len(self.grid[0])
-
-        uncovered_tile_found = False
 
         for x_offset in [-1, 0, 1]:
             new_x = tile.x + x_offset
@@ -212,8 +270,10 @@ class CBRAgent1(Agent):
                 if new_y < 0 or new_y >= num_rows:
                     continue
                 
-                if self.grid[new_x][new_y].uncovered:
+                if self.grid[new_y][new_x].uncovered:
                     return True
+        
+        return False
                 
     
     # Returns a list of all cases that are ranked to be most similar using K-means clustering.
@@ -227,27 +287,17 @@ class CBRAgent1(Agent):
             cases_and_similarity_scores.append((known_case, similarity_score))
 
         # Sort by similarity scores
-        cases_and_similarity_scores.sort(key=lambda x: x[1], reversed=True)
+        cases_and_similarity_scores.sort(key=lambda x: x[1], reverse=True)
         
         return cases_and_similarity_scores[:2]
 
 
     # Returns already used solution if an exact case match is found. Otherwise a solution is adapted from the similar cases. Confidence score 0.0 - 1.0 too.
     # Using cases' similarity score as the measure of confidence in a solution.
-    def getSolutionAndConfidence(self, case, similar_cases):
-        most_similar_case_and_similarity_score = (None, 0)
-
-        for similar_case in similar_cases:
-            # Same case, we already know the exact solution.
-            if case == similar_case:
-                return (similar_case.solution, 1.0)
-
-            similarity_score = self.calculateSimilarity(case, similar_case)
-
-            if similarity_score > most_similar_case_and_similarity_score[1]:
-                most_similar_case_and_similarity_score = (similar_case, similarity_score)
-
-        return (most_similar_case_and_similarity_score[0].solution, most_similar_case_and_similarity_score[1])
+    # Input is the problem case, and a sorted list of tuples (similar_case, similarity_score) sorted by similarity score in ascending order.
+    def getSolutionAndConfidence(self, case, similar_cases_with_score):
+        (most_similar_case, score) = similar_cases_with_score[0]
+        return most_similar_case.solution, score
 
 
     # Returns a score between 0.0 to 1.0 rating how similar the two cases are.
@@ -256,8 +306,8 @@ class CBRAgent1(Agent):
     def calculateSimilarity(self, case_1, case_2):
         similar_tiles = 0
 
-        for y in range(case_1.problem):
-            for x in range(case_1.problem[0]):
+        for y in range(len(case_1.problem)):
+            for x in range(len(case_1.problem[0])):
                 if case_1.problem[y][x] == case_2.problem[y][x]:
                     similar_tiles += 1
 

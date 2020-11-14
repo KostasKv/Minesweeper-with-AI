@@ -2,7 +2,7 @@ import random
 from enum import Enum
 
 
-class Cell:
+class Tile:
     def __init__(self, pos, is_mine=False):
         self.x = pos[0]
         self.y = pos[1]
@@ -51,18 +51,12 @@ class Game:
         
 
     def reset(self):
-        self.generateNewGrid()
+        self.createNewEmptyHiddenGrid()
         self.state = self.State.START
         self.mines_left = self.config['num_mines']
 
 
-    def generateNewGrid(self):
-        self.createMinelessGrid()
-        self.populateGridWithMines()
-        self.markGridSquaresWithMineProximityCount()
-
-
-    def createMinelessGrid(self):
+    def createNewEmptyHiddenGrid(self):
         self.grid = []
 
         for y in range(self.config['rows']):
@@ -70,26 +64,31 @@ class Game:
 
             for x in range(self.config['columns']):
                 pos = (x, y)
-                square = Cell(pos, is_mine=False)
-                row.append(square)
+                tile = Tile(pos, is_mine=False)
+                row.append(tile)
             
             self.grid.append(row)
 
+
+    def populateGrid(self, excluded_tile_pos):
+        self.populateGridWithMines(excluded_tile_pos)
+        self.markGridSquaresWithMineProximityCount()
 
     '''
         Using convention that max number of mines on a QxP grid is (Q-1)(P-1),
         in accordance to custom ranking rules on http://www.minesweeper.info/custom.php
         and Window's minesweeper implementation http://www.minesweeper.info/wiki/Windows_Minesweeper#Trivia
 
-        Method assumes Game's configuration is valid
+        Method assumes Game's configuration is valid.
+
+        Excludes tile that was clicked on in first click by player. First click is always safe in minesweeper.
     '''
-    def populateGridWithMines(self):
-
+    def populateGridWithMines(self, excluded_tile_pos):
         for _ in range(self.config['num_mines']):
-            self.placeMineInRandomEmptySquare()   
+            self.placeMineInRandomEmptySquare(excluded_tile_pos)   
 
 
-    def placeMineInRandomEmptySquare(self):
+    def placeMineInRandomEmptySquare(self, excluded_tile_pos):
         mine_placed = False
 
         # Keep trying random squares until an empty (non-mine) square is found
@@ -97,7 +96,7 @@ class Game:
             x = random.randrange(0, self.config['columns'])
             y = random.randrange(0, self.config['rows'])
 
-            if not self.grid[y][x].is_mine:
+            if (x, y) != excluded_tile_pos and not self.grid[y][x].is_mine:
                 self.grid[y][x].is_mine = True
                 mine_placed = True
 
@@ -110,49 +109,49 @@ class Game:
 
     def countAdjacentMines(self, x, y):
         adjacent_mines_count = 0
-        adjacent_cells_coords = self.getAdjacentCellsCoords(x, y)
+        adjacent_tiles_coords = self.getAdjacentTilesCoords(x, y)
 
-        for coords in adjacent_cells_coords:
+        for coords in adjacent_tiles_coords:
             x, y = coords
-            cell = self.grid[y][x]
+            tile = self.grid[y][x]
 
-            if cell.is_mine:
+            if tile.is_mine:
                 adjacent_mines_count += 1
 
         return adjacent_mines_count
 
 
-    def getAdjacentCellsCoords(self, x, y, exclude_diagonals=False):
+    def getAdjacentTilesCoords(self, x, y, exclude_diagonals=False):
         max_x = self.config['columns'] - 1
         max_y = self.config['rows'] - 1
 
-        adjacent_cells = []
+        adjacent_tiles = []
 
         for i in [-1, 0, 1]:
             new_x = x + i
 
-            # Out of bounds, no cell exists there.
+            # Out of bounds, no tile exists there.
             if new_x < 0 or new_x > max_x:
                 continue
 
             for j in [-1, 0, 1]:
                 new_y = y + j
 
-                # Out of bounds, no cell exists there.
+                # Out of bounds, no tile exists there.
                 if new_y < 0 or new_y > max_y:
                     continue
                 
-                # We want adjacent cells, not the cell itself
+                # We want adjacent tiles, not the tile itself
                 if new_x == x and new_y == y:
                     continue
                 
                 if exclude_diagonals and abs(i) == abs(j):
                     continue
 
-                adjacent_cell = (new_x, new_y)
-                adjacent_cells.append(adjacent_cell)
+                adjacent_tile = (new_x, new_y)
+                adjacent_tiles.append(adjacent_tile)
 
-        return adjacent_cells
+        return adjacent_tiles
 
 
     class State(Enum):

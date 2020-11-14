@@ -1,4 +1,4 @@
-from Game import Game, Cell
+from Game import Game, Tile
 from PygameRenderer import PygameRenderer
 from NoScreenRenderer import NoScreenRenderer
 from ExampleAgents import RandomAgent, RandomLegalMovesAgent, PickFirstUncoveredAgent
@@ -21,7 +21,7 @@ class Executor():
 
     ''' Input: action as a tuple (x, y, toggle_flag), where x, y is the 0-based coordinates
         of the tile to interact with, and toggle_flag is a boolean indiciating whether to toggle flag
-        status of the cell or to click the cell.
+        status of the tile or to click the tile.
         An action that is an integer -1 indicates the user chose to force reset the game.
 
         If game is in a finished state, then a call to this method will trigger a reset of the game, and
@@ -44,6 +44,9 @@ class Executor():
                 # Final game just finished. Return None to indicate this.
                 return None
         elif self.isLegalMove(action):
+            if self.game.state == Game.State.START:
+                safe_tile = (action[0], action[1])
+                self.game.populateGrid(safe_tile)
             self.processMove(action)
         else:
             self.game.state = Game.State.ILLEGAL_MOVE
@@ -81,7 +84,7 @@ class Executor():
             self.game.state = Game.State.PLAY
     
 
-    # Changes game grid (one cell gets flagged/unflagged).
+    # Changes game grid (one tile gets flagged/unflagged).
     def toggleFlag(self, x, y):
         if self.game.grid[y][x].is_flagged:
             self.game.grid[y][x].is_flagged = False
@@ -111,28 +114,28 @@ class Executor():
 
 
     def uncover(self, initial_x, initial_y):
-        cells_to_uncover = [(initial_x, initial_y)]
+        tiles_to_uncover = [(initial_x, initial_y)]
         
-        while cells_to_uncover:
-            x, y = cells_to_uncover.pop(0)
-            cell = self.game.grid[y][x]
+        while tiles_to_uncover:
+            x, y = tiles_to_uncover.pop(0)
+            tile = self.game.grid[y][x]
 
-            cell.uncovered = True
+            tile.uncovered = True
 
-            if cell.num_adjacent_mines == 0:
-                adjacent_cells_coords = self.game.getAdjacentCellsCoords(x, y)
+            if tile.num_adjacent_mines == 0:
+                adjacent_tiles_coords = self.game.getAdjacentTilesCoords(x, y)
 
-                for x, y in adjacent_cells_coords:
+                for x, y in adjacent_tiles_coords:
                     if self.game.grid[y][x].uncovered == False and not self.game.grid[y][x].is_flagged:
-                        if not (x, y) in cells_to_uncover:
-                            cells_to_uncover.append((x, y))
+                        if not (x, y) in tiles_to_uncover:
+                            tiles_to_uncover.append((x, y))
     
 
     def gameWon(self):
         for column in self.game.grid:
-            for cell in column:
-                # If any non-mine cell is still covered, then game has not yet been won
-                if not cell.is_mine and not cell.uncovered:
+            for tile in column:
+                # If any non-mine tile is still covered, then game has not yet been won
+                if not tile.is_mine and not tile.uncovered:
                     return False
 
         return True
@@ -190,8 +193,7 @@ if __name__ == '__main__':
     cbr_agent_1 = CBRAgent1()
 
     # run(random_agent)
-    # run(random_legal_agent, visualise=False, verbose=False, num_games=1000)
-    run(pick_first_uncovered_agent, visualise=False, verbose=False, num_games=5000)
+    # run(random_legal_agent, visualise=True, verbose=False, num_games=50, seed=57)
+    # run(pick_first_uncovered_agent, visualise=False, verbose=False, num_games=5000)
     # run(verbose=1, seed=57)
-    # run(cbr_agent_1, visualise=True, verbose=True)
-
+    run(cbr_agent_1, visualise=False, verbose=True, num_games=500)

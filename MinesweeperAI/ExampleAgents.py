@@ -24,17 +24,18 @@ class RandomLegalMovesAgent(Agent):
         x = randint(0, len(self.grid[0]) - 1)
         y = randint(0, len(self.grid) - 1)
 
-        while self.isIlegal(x, y):
+        while self.isIllegalMove(x, y, False):
             x = randint(0, len(self.grid[0]) - 1)
             y = randint(0, len(self.grid) - 1)
 
         return (x, y, False)
 
-    def isIlegal(self, x, y):
+
+    def isIllegalMove(self, x, y, toggle_flag):
         toggle_flag = False
 
         # Out of bounds
-        if x < 0 or y < 0 or x > len(self.grid[0]) or y > len(self.grid):
+        if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
             return True
 
         # Tile already uncovered
