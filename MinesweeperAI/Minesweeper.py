@@ -3,6 +3,7 @@ from PygameRenderer import PygameRenderer
 from NoScreenRenderer import NoScreenRenderer
 from ExampleAgents import RandomAgent, RandomLegalMovesAgent, PickFirstUncoveredAgent
 from CBRAgent1 import CBRAgent1
+import time
 
 
 class Executor():
@@ -44,7 +45,7 @@ class Executor():
                 # Final game just finished. Return None to indicate this.
                 return None
         elif self.isLegalMove(action):
-            if self.game.state == Game.State.START:
+            if self.game.state == Game.State.START and not action[2]:
                 safe_tile = (action[0], action[1])
                 self.game.populateGrid(safe_tile)
             self.processMove(action)
@@ -140,7 +141,7 @@ class Executor():
 
         return True
 
-    
+
     def forceResetGame(self):
         self.game.reset()
         self.games_left -= 1
@@ -170,7 +171,7 @@ def playGames(executor, renderer, verbose):
     renderer.onEndOfGames()
 
 
-def run(agent=None, config={'rows':16, 'columns':30, 'num_mines':99}, num_games=10, visualise=True, verbose=1, seed=None):
+def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10, visualise=True, verbose=1, seed=None):
     # If user is going to manually play, then they have to see the board.
     if not agent:
         visualise = True
@@ -191,9 +192,18 @@ if __name__ == '__main__':
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
     cbr_agent_1 = CBRAgent1()
+    
 
-    # run(random_agent)
-    # run(random_legal_agent, visualise=True, verbose=False, num_games=50, seed=57)
-    # run(pick_first_uncovered_agent, visualise=False, verbose=False, num_games=5000)
-    # run(verbose=1, seed=57)
-    run(cbr_agent_1, visualise=False, verbose=True, num_games=500)
+    config = {'rows': 16, 'columns': 16, 'num_mines': 40}
+
+    run(verbose=0, config=config, seed=57, visualise=True)
+
+    # run(random_agent, config=config, verbose=True, visualise=True)
+    # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
+    # # run(cbr_agent_1, visualise=False, verbose=True, num_games=500)
+
+    # start = time.time()
+    # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=100000)
+    # end = time.time()
+    # print("Time taken: {}".format(end - start))
+
