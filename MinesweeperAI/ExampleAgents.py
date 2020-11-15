@@ -5,8 +5,8 @@ from itertools import chain
 
 class RandomAgent(Agent):
     def nextMove(self):
-        x = randint(0, len(self.grid) - 1)
-        y = randint(0, len(self.grid[0]) - 1)
+        x = randint(0, len(self.grid[0]) - 1)
+        y = randint(0, len(self.grid) - 1)
         return (x, y, False)
 
     def update(self, grid, mines_left, game_state):
