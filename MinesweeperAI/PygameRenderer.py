@@ -3,6 +3,7 @@ import os
 from enum import Enum
 from Game import Game
 from Renderer import Renderer
+import asyncio
 
 # Sprites is global as most classes in this module need access to it, and it
 # only needs to be loaded into memory once. Apart from loading in the sprites,
@@ -30,12 +31,13 @@ class PygameRenderer(Renderer):
         self.emote_button = None
         self.illegal_move_tint_group = pygame.sprite.Group()
         self.is_agent = (agent != None)
+        self.agent_next_move = None
 
         # Constants 
         self.TILE_SIZE = 16
         self.CLOCK_TICK_EVENT = pygame.USEREVENT + 1
-        self.AGENT_TRIGGER_EVENT = pygame.USEREVENT + 2
-        self.AGENT_TIME_BETWEEN_MOVES = 500
+        self.PLAY_AGENT_MOVE_EVENT = pygame.USEREVENT + 2
+        self.AGENT_TIME_BETWEEN_MOVES = 5
         self.ONE_SECOND = 1000
         self.NO_TIMER = 0
         self.ACTION_RESET_GAME = -1
@@ -103,7 +105,7 @@ class PygameRenderer(Renderer):
 
             for x, tile in enumerate(row):
                 pos = (grid_x + (x * self.TILE_SIZE), grid_y + y * self.TILE_SIZE)
-                tile_sprite = TileSprite(tile, self.game_state, pos, x, y, self.is_agent)
+                tile_sprite = TileSprite(tile, self.game_state, pos, x, y, self.is_agent, self)
                 sprites_row.append(tile_sprite)
             
             self.tile_sprites.append(sprites_row)
@@ -145,9 +147,7 @@ class PygameRenderer(Renderer):
 
     def initialiseIllegalMoveTint(self):
         grid_pos = self.tile_sprites[0][0].rect.topleft
-        print("grid_pos: {}".format(grid_pos))
         grid_size = (len(self.grid[0]) * self.TILE_SIZE, len(self.grid) * self.TILE_SIZE)
-        print("grid_size: {}".format(grid_size))
         grid_rect = pygame.Rect(grid_pos, grid_size)
         self.illegal_move_tint = IllegalMoveTint(grid_rect)
         self.things_to_draw.append(self.illegal_move_tint_group)
@@ -156,54 +156,77 @@ class PygameRenderer(Renderer):
         if self.agent:
             self.agent.update(self.grid, self.mines_left, self.game_state)
             self.agent.onGameBegin()
+            self.agent.feedRenderer(self)
+            pygame.time.set_timer(self.PLAY_AGENT_MOVE_EVENT, self.AGENT_TIME_BETWEEN_MOVES)           
 
-            pygame.time.set_timer(self.AGENT_TRIGGER_EVENT, self.AGENT_TIME_BETWEEN_MOVES)
+    def getNextMoveFromAgentAndMarkTiles(self):
+        next_move = self.agent.nextMove()
+        self.markAgentAction(next_move)
 
+        tiles_to_highlight = self.agent.highlightTiles()
+        
+        if tiles_to_highlight:
+            for (x, y, highlight_code) in tiles_to_highlight:
+                self.tile_sprites[y][x].addHighlight(highlight_code)
+        self.draw()
+        
+        return next_move
 
-    def getNextMoveFromAgent(self):
-        agentAction = None
+    def getNextMove(self):
+        action = None
 
-        while not agentAction:
-            agentAction = self.handleEvents()
+        self.draw()
+        while not action:
+            action = self.handleEvents()
             self.update()
             self.draw()
         
-        if agentAction == self.ACTION_RESET_GAME:
+        if action == self.ACTION_RESET_GAME:
             self.onGameRestart()
         else:
-            self.last_action_coords = (agentAction[0], agentAction[1])
+            self.last_action_coords = (action[0], action[1])
+            self.agent_next_move = None
 
-        return agentAction
-
+        return action
 
     # Reset counters and remove illegal-move red tint
     def onGameRestart(self):
         self.timer.updateValue(0)
         self.illegal_move_tint.kill()
 
-
     def update(self):
-        pass
-
+        if not self.agent_next_move and self.agent and self.game_state in [Game.State.PLAY, Game.State.START]:
+            self.agent_next_move = self.getNextMoveFromAgentAndMarkTiles()
 
     def handleEvents(self):
-        agent_action = None
+        action = None
 
         for event in pygame.event.get():
             if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION]:
                 self.handleSpriteBeingHeldSwitch(event)
             if event.type == pygame.MOUSEBUTTONUP:
                 self.handleSpriteBeingHeldSwitch(event)
-                agent_action = self.onMouseButtonUp(event)
+                action = self.onMouseButtonUp(event)
             if event.type == self.CLOCK_TICK_EVENT:
                 self.onTimerTick()
-            if event.type == self.AGENT_TRIGGER_EVENT:
-                agent_action = self.getMoveFromAgent()
+            if event.type == self.PLAY_AGENT_MOVE_EVENT:
+                action = self.playNextMove()
             if event.type == pygame.QUIT:
                 pygame.quit()
 
-        return agent_action
+        return action
 
+    def playNextMove(self):
+        if self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]:
+            # Game ended so update screen and then send a game reset action.
+            self.onGameRestart()
+            action = self.ACTION_RESET_GAME
+        elif self.agent_next_move:
+            action = self.agent_next_move
+        else:
+            action = None
+        
+        return action
 
     def onMouseButtonUp(self, event):
         sprite_at_cursor = self.getSpriteAtCursor()
@@ -215,7 +238,6 @@ class PygameRenderer(Renderer):
             action = self.ACTION_RESET_GAME
 
         return action
-
 
     def onGridClick(self, event, tile_sprite):
         # Ignore click if AI is playing, or if in an end-game state 
@@ -262,10 +284,8 @@ class PygameRenderer(Renderer):
         else:
             self.sprite_being_held = None
 
-        # if self.sprite_being_held and self.sprite_being_held.__type__ in [EmoteButton, TileSprite]:
         if self.sprite_being_held:
             self.sprite_being_held.updateBeingHeld(True, self.game_state)
-
 
         if isinstance(self.sprite_being_held, TileSprite) and self.sprite_being_held.holdable:
             tile_being_held = self.sprite_being_held
@@ -287,26 +307,27 @@ class PygameRenderer(Renderer):
 
         return None
 
-
-    def getMoveFromAgent(self):
-        if self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]:
-            # Game ended so update screen and then send a game reset action.
-            self.onGameRestart()
-            action = self.ACTION_RESET_GAME
-        else:
-            action = self.agent.nextMove()
+    def highlightTilesAndDraw(self, tiles_to_highlight):
+        for (tile, code) in tiles_to_highlight:
+            self.tile_sprites[tile.y][tile.x].addHighlight(code)
         
-        return action
+        pygame.event.pump()
+        self.draw()
+        # pygame.event.pump() # Incase OS is not updating display immediately
 
+    def removeHighlightsAndDraw(self, tiles):
+        for (tile, code) in tiles:
+            self.tile_sprites[tile.y][tile.x].removeHighlight(code)
+        
+        pygame.event.pump()
+        self.draw()
+        # pygame.event.pump() # Incase OS is not updating display immediately
 
     def draw(self):
-        # self.screen.blit(sprites['background'], (0, 0))
-
         for group in self.things_to_draw:
             group.draw(self.screen)
 
         pygame.display.flip()
-
 
     def updateFromResult(self, result):
         self.grid, self.mines_left, self.game_state = result
@@ -332,7 +353,20 @@ class PygameRenderer(Renderer):
                 self.onGameLoss()
             elif self.game_state == Game.State.ILLEGAL_MOVE:
                 self.onIllegalMove()
+        
+        # Remove highlights from tile as turn has finished.
+        for row in self.tile_sprites:
+            for tile in row:
+                tile.removeAllHighlights()
 
+    def markAgentAction(self, next_move):
+        (x, y, toggle_flag) = next_move
+        if toggle_flag:
+            sprite = sprites['tile_mark_flag_1']
+        else:
+            sprite = sprites['tile_mark_no_flag_1']
+        
+        self.tile_sprites[y][x].blitSpriteOverTile(sprite)
 
     # Notifies grid object which mine tile was clicked that lost the game so it can show the appropriate sprite
     def onGameLoss(self):
@@ -471,7 +505,7 @@ class EmoteButton(pygame.sprite.Sprite):
 
 
 class TileSprite(pygame.sprite.Sprite):
-    def __init__(self, tile, game_state, pos, grid_x, grid_y, is_agent):
+    def __init__(self, tile, game_state, pos, grid_x, grid_y, is_agent, renderer):
         pygame.sprite.Sprite.__init__(self)
         self.image = self.getSprite(tile, game_state)
         self.real_image = self.image
@@ -482,6 +516,10 @@ class TileSprite(pygame.sprite.Sprite):
         self.y = grid_y
         self.TILE_NUM_TO_SPRITE_NAME = ["tile_uncovered", "tile_1", "tile_2", "tile_3", "tile_4", "tile_5", "tile_6", "tile_7", "tile_8"]
         self.holdable = self.isHoldable(tile, game_state, is_agent)
+
+        # DEBUG
+        self.highlights = set()
+        self.renderer = renderer
 
     def getSprite(self, tile, game_state):
         if tile.uncovered:
@@ -527,9 +565,34 @@ class TileSprite(pygame.sprite.Sprite):
     def updateAsFinalClick(self):
         self.image = sprites['tile_mine_red']
 
-    def highlight(self, highlight_code):
-        # blot appropriate highlight on tile
-        pass
+    def addHighlight(self, highlight_code):
+        self.highlights.add(str(highlight_code))
+        self.highlightImage()
+
+    def removeHighlight(self, highlight_code):
+        self.highlights.discard(str(highlight_code))
+        self.highlightImage()
+    
+    def removeAllHighlights(self):
+        self.highlights = set()
+        self.image = self.real_image
+
+    def highlightImage(self):
+        self.image = self.real_image
+
+        for highlight_code in self.highlights:
+            sprite_name = 'tile_highlight_' + highlight_code
+            sprite = sprites[sprite_name]
+            self.blitSpriteOverTile(sprite)
+
+    def blitSpriteOverTile(self, sprite_image):
+        # Create new surface as the regular tile sprite image is a reference of the sprite in global sprites array.
+        # Blitting directly onto that sprite would change the sprite for every tile.
+        marked_tile = pygame.Surface(self.image.get_size())
+        marked_tile.blit(self.image, (0, 0))
+        marked_tile.blit(sprite_image, (0, 0))
+
+        self.image = marked_tile
         
 
 class IllegalMoveTint(pygame.sprite.Sprite):

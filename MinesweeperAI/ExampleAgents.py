@@ -16,7 +16,9 @@ class RandomAgent(Agent):
 
     def onGameBegin(self):
         pass
-
+    
+    def highlightTiles(self):
+        pass
 
 class RandomLegalMovesAgent(Agent):
     def nextMove(self):
@@ -56,6 +58,8 @@ class RandomLegalMovesAgent(Agent):
     def onGameBegin(self):
         pass
 
+    def highlightTiles(self):
+        pass
 
 
 class PickFirstUncoveredAgent(Agent):
@@ -72,4 +76,6 @@ class PickFirstUncoveredAgent(Agent):
     def onGameBegin(self):
         # Flatten grid to a 1D list
         self.tiles_not_checked = list(chain.from_iterable(self.grid))
-        
+    
+    def highlightTiles(self):
+        pass

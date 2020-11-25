@@ -1,6 +1,7 @@
 from Agent import Agent
 from Game import Game
 import random
+import time
 
 class Case:
     '''
@@ -17,6 +18,7 @@ class CBRAgent1(Agent):
         self.case_base = []
         self.prev_case_with_mine_clicked = None
         self.cases_with_flag_and_target_coords = []
+        self.tiles_chosen_from = []
         
         # Constants
         self.SAMPLE_ROWS = 5
@@ -84,6 +86,9 @@ class CBRAgent1(Agent):
             tiles_to_choose_from = frontier_tiles
         else:
             tiles_to_choose_from = self.getAllCoveredNonFlaggedTiles()
+        
+        # Save for highlighting later
+        self.tiles_chosen_from = tiles_to_choose_from
 
         if self.case_base:
             case, target_coords = self.pickMostConfidentMoveFromTilesGetItsCaseWithSolution(tiles_to_choose_from)
@@ -314,3 +319,15 @@ class CBRAgent1(Agent):
         num_tiles = len(case_1.problem) * len(case_1.problem[0])
 
         return similar_tiles / num_tiles
+
+
+    def highlightTiles(self):
+        tiles_to_highlight = []
+
+        for tile in self.tiles_chosen_from:
+            highlight_code = 1
+            tiles_to_highlight.append((tile.x, tile.y, highlight_code))
+        
+        self.tiles_chosen_from = []
+
+        return tiles_to_highlight

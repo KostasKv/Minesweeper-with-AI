@@ -16,7 +16,7 @@ class NoScreenRenderer(Renderer):
         self.agent.onGameBegin()
 
 
-    def getNextMoveFromAgent(self):
+    def getNextMove(self):
         if self.game_state in [Game.State.PLAY, Game.State.START]:
             return self.agent.nextMove()
         else:

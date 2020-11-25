@@ -5,7 +5,7 @@ class Renderer(ABC):
         pass
 
 
-    def getNextMoveFromAgent(self):
+    def getNextMove(self):
         pass
 
     

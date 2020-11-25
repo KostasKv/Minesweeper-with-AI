@@ -3,7 +3,9 @@ from PygameRenderer import PygameRenderer
 from NoScreenRenderer import NoScreenRenderer
 from ExampleAgents import RandomAgent, RandomLegalMovesAgent, PickFirstUncoveredAgent
 from CBRAgent1 import CBRAgent1
+from PerfectSolver import NoUnnecessaryGuessSolver
 import time
+import itertools
 
 
 class Executor():
@@ -154,7 +156,7 @@ class Executor():
             
 def playGames(executor, renderer, verbose):
     # Start of all games. Start renderer and get agent's very first move.
-    action = renderer.getNextMoveFromAgent()
+    action = renderer.getNextMove()
 
     # Play until all games are finished
     while result := executor.makeMove(action):
@@ -166,7 +168,7 @@ def playGames(executor, renderer, verbose):
 
 
         renderer.updateFromResult(result)
-        action = renderer.getNextMoveFromAgent()
+        action = renderer.getNextMove()
 
     renderer.onEndOfGames()
 
@@ -188,22 +190,26 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10
 
 
 if __name__ == '__main__':
+    # Solvers
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
+    solver_agent = NoUnnecessaryGuessSolver()
+
+    # Learners
     cbr_agent_1 = CBRAgent1()
+
     
 
-    config = {'rows': 16, 'columns': 16, 'num_mines': 40}
+    config = {'rows': 16, 'columns': 30, 'num_mines': 99}
 
-    run(verbose=0, config=config, seed=57, visualise=True)
+    # run(verbose=0, config=config, seed=57, visualise=True)
 
     # run(random_agent, config=config, verbose=True, visualise=True)
     # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
-    # # run(cbr_agent_1, visualise=False, verbose=True, num_games=500)
-
+    run(solver_agent, config=config, visualise=True, verbose=False, num_games=10, seed=56)
+    # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
     # start = time.time()
     # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=100000)
     # end = time.time()
     # print("Time taken: {}".format(end - start))
-

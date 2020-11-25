@@ -9,3 +9,6 @@ class Agent(ABC):
 
     def onGameBegin(self):
         pass
+
+    def highlightTiles(self):
+        pass
