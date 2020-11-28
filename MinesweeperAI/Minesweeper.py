@@ -3,9 +3,10 @@ from PygameRenderer import PygameRenderer
 from NoScreenRenderer import NoScreenRenderer
 from ExampleAgents import RandomAgent, RandomLegalMovesAgent, PickFirstUncoveredAgent
 from CBRAgent1 import CBRAgent1
-from PerfectSolver import NoUnnecessaryGuessSolver
+from NoUnnecessaryGuessSolver import NoUnnecessaryGuessSolver
 import time
 import itertools
+import cProfile
 
 
 class Executor():
@@ -155,20 +156,21 @@ class Executor():
 
             
 def playGames(executor, renderer, verbose):
-    # Start of all games. Start renderer and get agent's very first move.
+    # First move of all games.
     action = renderer.getNextMove()
+    result = executor.makeMove(action)
 
     # Play until all games are finished
-    while result := executor.makeMove(action):
+    while result:
         # Temp verbose solution. It should give more information, and the responsibility should be put on the renderer
         # to display the information (however the information could be processed outside of it and fed to the renderer.
         # Not yet sure which is preferable)
         if verbose:
             print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
 
-
         renderer.updateFromResult(result)
         action = renderer.getNextMove()
+        result = executor.makeMove(action)
 
     renderer.onEndOfGames()
 
@@ -198,18 +200,21 @@ if __name__ == '__main__':
 
     # Learners
     cbr_agent_1 = CBRAgent1()
-
     
 
     config = {'rows': 16, 'columns': 30, 'num_mines': 99}
-
     # run(verbose=0, config=config, seed=57, visualise=True)
 
     # run(random_agent, config=config, verbose=True, visualise=True)
     # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
-    run(solver_agent, config=config, visualise=True, verbose=False, num_games=10, seed=56)
+    # run(solver_agent, config=config, visualise=True, verbose=False, num_games=10, seed=56)
     # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
+
+    num_games = int(1e5)
+    print("starting test of {} games".format(num_games))
     # start = time.time()
-    # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=100000)
+    cProfile.run("run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "program.prof")
     # end = time.time()
     # print("Time taken: {}".format(end - start))
+
+    print("Program stopped.")

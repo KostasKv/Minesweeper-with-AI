@@ -65,8 +65,12 @@ class PygameRenderer(Renderer):
 
         screen_width = sprites['background'].get_width()
         screen_height = sprites['background'].get_height()
-        self.screen = pygame.display.set_mode((screen_width, screen_height))
+
+        # DEBUG: place screen in specific location (so it's easier to work with vs code debugger)
+        position = (1920 - screen_width, (1080 - screen_height) // 2 - 50)
+        os.environ['SDL_VIDEO_WINDOW_POS'] = str(position[0]) + "," + str(position[1])
     
+        self.screen = pygame.display.set_mode((screen_width, screen_height))
     @staticmethod
     def loadSprites():
         global sprites
@@ -307,21 +311,22 @@ class PygameRenderer(Renderer):
 
         return None
 
-    def highlightTilesAndDraw(self, tiles_to_highlight):
-        for (tile, code) in tiles_to_highlight:
-            self.tile_sprites[tile.y][tile.x].addHighlight(code)
-        
-        pygame.event.pump()
-        self.draw()
-        # pygame.event.pump() # Incase OS is not updating display immediately
+    def highlightTilesAndDraw(self, tiles_to_highlight, add_highlights):
+        if add_highlights == None:
+            raise ValueError("Required 'add_highlights' keyword is missing")
 
-    def removeHighlightsAndDraw(self, tiles):
-        for (tile, code) in tiles:
-            self.tile_sprites[tile.y][tile.x].removeHighlight(code)
+        for ((x, y), code) in tiles_to_highlight:
+            if add_highlights:
+                self.tile_sprites[y][x].addHighlight(code)
+            else:
+                self.tile_sprites[y][x].removeHighlight(code)
         
-        pygame.event.pump()
+        pygame.event.pump()  # Incase OS is not updating display immediately
         self.draw()
-        # pygame.event.pump() # Incase OS is not updating display immediately
+
+    def removeAllTileHighlights(self, tiles):
+        for (x, y) in tiles:
+            self.tile_sprites[y][x].removeAllHighlights()
 
     def draw(self):
         for group in self.things_to_draw:
