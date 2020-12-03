@@ -41,58 +41,42 @@ class NoUnnecessaryGuessSolver(Agent):
         
         if self.sure_moves_not_played_yet:
             h = self.sureMovesToHighlights(self.sure_moves_not_played_yet)
-            self.cheekyHighlight(h)
+            self.cheekyGridHighlight(h)
     
 
-        self.cheekyHighlight(self.sureMovesToHighlights([move]))
-        self.cheekyHighlight(move, 6)
+        self.cheekyGridHighlight(self.sureMovesToHighlights([move]))
+        self.cheekyGridHighlight(move, 6)
 
         return move
 
     def lookForSureMovesFromSamplesOfGrid(self, size):
-        max_op = 4
-        ops = [None] + [i for i in range(1, max_op + 1)]
-
-        # # TRY ALL METHODS
-        # all_samples = [self.getSampleAreasFromGrid(size, optimisation=op) for op in ops]
-        # all_samples.append(self.getSampleAreasFromGridOPTIMISED(size))
-
-        # COMPARE JUST getSampleAreasFromGrid optimisations
-        all_samples = [
-            self.getSampleAreasFromGrid(size, optimisation=None),
-            self.getSampleAreasFromGridOPTIMISED(size),
-            self.getSampleAreasFromGridOPTIMISED2(size),
-            self.getSampleAreasFromGridOPTIMISED3(size),
-            ]
-
-        for samples in all_samples:
-            for (sample, sample_pos) in samples:
-                pass
-
-        count = 0
+        samples = self.getSampleAreasFromGrid(size)
         sure_moves = set()
-            # sample_hash = self.getSampleHash(sample)
-            # if sample_hash in self.samples_considered_already:
-            #     count += 1
-            #     continue
+        count = 0
 
-            # self.cheekySampleHighlight(sample, 2)
-            # sure_moves = self.matrixAndBruteForceStrategies(sample)
+        for (sample, sample_pos) in samples:
+            sample_hash = self.getSampleHash(sample)
+            if sample_hash in self.samples_considered_already:
+                count += 1
+                continue
 
-            # self.samples_considered_already.add(sample_hash)
+            self.highlightSample(sample)
+            sure_moves = self.matrixAndBruteForceStrategies(sample)
 
-            # # if sure_moves:
-            # #     h = self.sureMovesToHighlights(sure_moves)
-            # #     self.cheekySampleHighlight(h)
-            # #     self.removeSampleHighlight(h)
+            self.samples_considered_already.add(sample_hash)
 
-            # self.removeAllSampleHighlights(sample)
             # if sure_moves:
-            #     sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
-            #     sure_moves = self.pruneSureMoves(sure_moves)
+            #     h = self.sureMovesToHighlights(sure_moves)
+            #     self.cheekySampleHighlight(h)
+            #     self.removeSampleHighlight(h)
 
-            #     if sure_moves:
-            #         break
+            self.removeAllSampleHighlights(sample)
+            if sure_moves:
+                sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
+                sure_moves = self.pruneSureMoves(sure_moves)
+
+                if sure_moves:
+                    break
         
         return sure_moves
 
@@ -102,110 +86,9 @@ class NoUnnecessaryGuessSolver(Agent):
         simpler_sample = tuple(None if tile is None else tile.num_adjacent_mines if tile.uncovered else -1 for tile in tiles)
         return hash(simpler_sample)
 
-    '''
-        Note that (shallow) copies of the grid's Tile objects are
-        used. This is so that a change in a sample's tile doesn't accidentally make a
-        a change to the grid itself. This way the solving algorithms can
-        'mark' a sample with solutions while keeping unique samples independant from eachother.
-    '''
-
-    def getSampleAreasFromGrid(self, size, optimisation=None):
-        # Note that these ranges will include the outside grid wall (1 tile thick at most)
-        # in the samples. This is required to be sure that the solver will not make unecessary
-        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
-        # in certain scenarios.
-        min_x = -1
-        min_y = -1
-        max_x = len(self.grid[0]) - size[0] + 1
-        max_y = len(self.grid) - size[1] + 1
-
-        for y in range(min_y, max_y + 1):
-            for x in range(min_x, max_x + 1):
-                pos = (x, y)
-
-                if optimisation is None:
-                    sample = self.getSampleAtPosition(pos, size)
-                elif optimisation == 1:
-                    sample = self.getSampleAtPositionOPTIMISED(pos, size)
-                elif optimisation == 2:
-                    sample = self.getSampleAtPositionOPTIMISED2(pos, size)
-                elif optimisation == 3:
-                    sample = self.getSampleAtPositionOPTIMISED3(pos, size)
-                elif optimisation == 4:
-                    sample = self.getSampleAtPositionOPTIMISED4(pos, size)
-                else:
-                    raise ValueError("No optimisation for {} given.".format(optimisation))
-                
-                self.sample_pos = pos
-                yield (sample, pos)
-
-    '''
-        Each tile in sample has its relative sample coordinates, rather
-        than its real grid coordinates.
-    '''
-    def getSampleAtPosition(self, pos, size):
-        (x, y) = pos
-        (columns, rows) = size
-
-        # Calculate how many wall tiles to include (which can happen when part of sample lies
-        # outside game grid).
-        num_rows_of_wall_tiles_above = max(0 - y, 0)
-        num_rows_of_wall_tiles_below = max(y + rows - len(self.grid), 0)
-        num_wall_tiles_on_left_side = max((0 - x), 0)
-        num_wall_tiles_on_right_side = max((x + columns - len(self.grid[0])), 0)
-
-        row_of_wall_tiles = [None] * columns
-
-        sample = [row_of_wall_tiles] * num_rows_of_wall_tiles_above
-        sample_end = [row_of_wall_tiles] * num_rows_of_wall_tiles_below
-        row_start = [None] * num_wall_tiles_on_left_side
-        row_end = [None] * num_wall_tiles_on_right_side
-
-        # Slices which will get tiles where sample overlaps with game grid.
-        rows_slice = slice(max(y, 0), (y + rows))
-        columns_slice = slice(max(x, 0), (x + columns))
-
-        for sample_y, tile_row in enumerate(self.grid[rows_slice], num_rows_of_wall_tiles_above):
-            # Don't want a reference to row_start since row will be modified. Just want it's values.
-            row = copy(row_start)
-
-            for sample_x, tile in enumerate(tile_row[columns_slice], num_wall_tiles_on_left_side):
-                copied_tile = copy(tile)
-                copied_tile.x = sample_x
-                copied_tile.y = sample_y
-
-                row.append(copied_tile)
-
-            row.extend(row_end)
-            sample.append(row)
-
-        sample.extend(sample_end)
-
-        return sample
-
-    def getSampleAreasFromGridOPTIMISED(self, size):
-        converted_grid = []
-        for row in self.grid:
-            row = ['@' if tile is None else str(tile.num_adjacent_mines) if tile.uncovered else '-' for tile in row]
-            converted_grid.append(row)
-
-        # Note that these ranges will include the outside grid wall (1 tile thick at most)
-        # in the samples. This is required to be sure that the solver will not make unecessary
-        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
-        # in certain scenarios.
-        min_x = -1
-        min_y = -1
-        max_x = len(self.grid[0]) - size[0] + 1
-        max_y = len(self.grid) - size[1] + 1
-
-        for y in range(min_y, max_y + 1):
-            for x in range(min_x, max_x + 1):
-                pos = (x, y)
-                sample = self.getSampleAtPositionOPTIMISED5(pos, size, converted_grid)
-                self.sample_pos = pos
-                yield (sample, pos)
-
-    def getSampleAreasFromGridOPTIMISED2(self, size):
+    def getSampleAreasFromGrid(self, size):
+        # Removes coordinates from every tile. A sample's coordinates will be inferred
+        # from the element's position in the sample.
         converted_grid = [[SampleTile(tile) for tile in row] for row in self.grid]
 
         # Note that these ranges will include the outside grid wall (1 tile thick at most)
@@ -220,186 +103,11 @@ class NoUnnecessaryGuessSolver(Agent):
         for y in range(min_y, max_y + 1):
             for x in range(min_x, max_x + 1):
                 pos = (x, y)
-                sample = self.getSampleAtPositionOPTIMISED5(pos, size, converted_grid)
+                sample = self.getSampleAtPosition(pos, size, converted_grid)
                 self.sample_pos = pos
                 yield (sample, pos)
 
-    def getSampleAreasFromGridOPTIMISED3(self, size):
-        converted_grid = [[copy(tile) for tile in row] for row in self.grid]
-
-        # Note that these ranges will include the outside grid wall (1 tile thick at most)
-        # in the samples. This is required to be sure that the solver will not make unecessary
-        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
-        # in certain scenarios.
-        min_x = -1
-        min_y = -1
-        max_x = len(self.grid[0]) - size[0] + 1
-        max_y = len(self.grid) - size[1] + 1
-
-        for y in range(min_y, max_y + 1):
-            for x in range(min_x, max_x + 1):
-                pos = (x, y)
-                sample = self.getSampleAtPositionOPTIMISED5(pos, size, converted_grid)
-                self.sample_pos = pos
-                yield (sample, pos)
-
-    def getSampleAtPositionOPTIMISED(self, pos, size):
-        (x, y) = pos
-        (columns, rows) = size
-
-        # Calculate how many wall tiles to include (which can happen when part of sample lies
-        # outside game grid).
-        num_rows_of_wall_tiles_above = max(0 - y, 0)
-        num_rows_of_wall_tiles_below = max(y + rows - len(self.grid), 0)
-        num_wall_tiles_on_left_side = max((0 - x), 0)
-        num_wall_tiles_on_right_side = max((x + columns - len(self.grid[0])), 0)
-
-        row_of_wall_tiles = [None] * columns
-
-        sample = [row_of_wall_tiles] * num_rows_of_wall_tiles_above
-        sample_end = [row_of_wall_tiles] * num_rows_of_wall_tiles_below
-        row_start = [None] * num_wall_tiles_on_left_side
-        row_end = [None] * num_wall_tiles_on_right_side
-
-        # Slices which will get tiles where sample overlaps with game grid.
-        rows_slice = slice(max(y, 0), (y + rows))
-        columns_slice = slice(max(x, 0), (x + columns))
-
-        for sample_y, tile_row in enumerate(self.grid[rows_slice], num_rows_of_wall_tiles_above):
-            # Don't want a reference to row_start since row will be modified. Just want it's values.
-            row = [] + row_start
-
-            for sample_x, tile in enumerate(tile_row[columns_slice], num_wall_tiles_on_left_side):
-                copied_tile = SampleTile((sample_x, sample_y), tile)
-                row.append(copied_tile)
-
-            row.extend(row_end)
-            sample.append(row)
-
-        sample.extend(sample_end)
-
-        return sample
-
-    def getSampleAtPositionOPTIMISED2(self, pos, size):
-        (x, y) = pos
-        (columns, rows) = size
-
-        # Calculate how many wall tiles to include (which can happen when part of sample lies
-        # outside game grid).
-        num_rows_of_wall_tiles_above = max(0 - y, 0)
-        num_rows_of_wall_tiles_below = max(y + rows - len(self.grid), 0)
-        num_wall_tiles_on_left_side = max((0 - x), 0)
-        num_wall_tiles_on_right_side = max((x + columns - len(self.grid[0])), 0)
-
-        row_of_wall_tiles = [None] * columns
-
-        sample = [row_of_wall_tiles] * num_rows_of_wall_tiles_above
-        sample_end = [row_of_wall_tiles] * num_rows_of_wall_tiles_below
-        row_start = [None] * num_wall_tiles_on_left_side
-        row_end = [None] * num_wall_tiles_on_right_side
-
-        # Slices which will get tiles where sample overlaps with game grid.
-        rows_slice = slice(max(y, 0), (y + rows))
-        columns_slice = slice(max(x, 0), (x + columns))
-
-        for sample_y, tile_row in enumerate(self.grid[rows_slice], num_rows_of_wall_tiles_above):
-            # Don't want a reference to row_start since row will be modified. Just want it's values.
-            row = [] + row_start
-
-            for sample_x, tile in enumerate(tile_row[columns_slice], num_wall_tiles_on_left_side):
-                if tile is None:
-                    value = '@'
-                elif tile.uncovered:
-                    value = str(tile.num_adjacent_mines)
-                else:
-                    value = '-'
-                    
-                copied_tile = (value, (sample_x, sample_y))
-                row.append(copied_tile)
-
-            row.extend(row_end)
-            sample.append(row)
-
-        sample.extend(sample_end)
-
-        return sample
-
-    def getSampleAtPositionOPTIMISED3(self, pos, size):
-        (x, y) = pos
-        (columns, rows) = size
-
-        # Calculate how many wall tiles to include (which can happen when part of sample lies
-        # outside game grid).
-        num_rows_of_wall_tiles_above = max(0 - y, 0)
-        num_rows_of_wall_tiles_below = max(y + rows - len(self.grid), 0)
-        num_wall_tiles_on_left_side = max((0 - x), 0)
-        num_wall_tiles_on_right_side = max((x + columns - len(self.grid[0])), 0)
-
-        row_of_wall_tiles = [None] * columns
-
-        sample = [row_of_wall_tiles] * num_rows_of_wall_tiles_above
-        sample_end = [row_of_wall_tiles] * num_rows_of_wall_tiles_below
-        row_start = [None] * num_wall_tiles_on_left_side
-        row_end = [None] * num_wall_tiles_on_right_side
-
-        # Slices which will get tiles where sample overlaps with game grid.
-        rows_slice = slice(max(y, 0), (y + rows))
-        columns_slice = slice(max(x, 0), (x + columns))
-
-        for tile_row in self.grid[rows_slice]:
-            # Don't want a reference to row_start since row will be modified. Just want it's values.
-            row = [] + row_start
-
-            for tile in tile_row[columns_slice]:
-                if tile is None:
-                    value = '@'
-                elif tile.uncovered:
-                    value = str(tile.num_adjacent_mines)
-                else:
-                    value = '-'
-
-                row.append(value)
-
-            row.extend(row_end)
-            sample.append(row)
-
-        sample.extend(sample_end)
-
-        return sample
-
-    def getSampleAtPositionOPTIMISED4(self, pos, size):
-        (x, y) = pos
-        (columns, rows) = size
-
-        # Calculate how many wall tiles to include (which can happen when part of sample lies
-        # outside game grid).
-        num_rows_of_wall_tiles_above = max(0 - y, 0)
-        num_rows_of_wall_tiles_below = max(y + rows - len(self.grid), 0)
-        num_wall_tiles_on_left_side = max((0 - x), 0)
-        num_wall_tiles_on_right_side = max((x + columns - len(self.grid[0])), 0)
-
-        row_of_wall_tiles = [None] * columns
-
-        sample = [row_of_wall_tiles] * num_rows_of_wall_tiles_above
-        sample_end = [row_of_wall_tiles] * num_rows_of_wall_tiles_below
-        row_start = [None] * num_wall_tiles_on_left_side
-        row_end = [None] * num_wall_tiles_on_right_side
-
-        # Slices which will get tiles where sample overlaps with game grid.
-        rows_slice = slice(max(y, 0), (y + rows))
-        columns_slice = slice(max(x, 0), (x + columns))
-
-        for tile_row in self.grid[rows_slice]:
-            # Concatenating to empty list because we don't want a reference to row_start since row will be modified.
-            row = [] + row_start
-            row.extend('@' if tile is None else str(tile.num_adjacent_mines) if tile.uncovered else '-' for tile in tile_row[columns_slice])
-            sample.append(row)
-
-        sample.extend(sample_end)
-
-        return sample
-
-    def getSampleAtPositionOPTIMISED5(self, pos, size, grid):
+    def getSampleAtPosition(self, pos, size, grid):
         (x, y) = pos
         (columns, rows) = size
 
@@ -421,7 +129,7 @@ class NoUnnecessaryGuessSolver(Agent):
         rows_slice = slice(max(y, 0), (y + rows))
         columns_slice = slice(max(x, 0), (x + columns))
 
-        sample.extend([row_start + tile_row[columns_slice] for tile_row in grid[rows_slice]])
+        sample.extend([row_start + tile_row[columns_slice] + row_end for tile_row in grid[rows_slice]])
         sample.extend(sample_end)
 
         return sample
@@ -841,20 +549,20 @@ class NoUnnecessaryGuessSolver(Agent):
     def getDisjointSections(self, sample):
         disjoint_sections = []
 
-        for (sample_y, row) in enumerate(sample):
-            for (sample_x, tile) in enumerate(row):
+        for (y, row) in enumerate(sample):
+            for (x, tile) in enumerate(row):
                 # Only consider uncovered tiles with a number larger than 0, as those are the only
                 # ones from which useful constraints can be made (and whether or not those constraints are disjoint
                 # determines whether or not the sections are disjoint).
                 if not tile or not tile.uncovered or tile.num_adjacent_mines == 0:
                     continue
                 
-                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, tile)
+                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines)
 
         return disjoint_sections
 
-    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile):
-        adjacent_section = self.getAdjacentSectionForSampleTile(sample, tile)
+    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines):
+        adjacent_section = self.getAdjacentSectionForSampleTile(sample, tile_coords, num_adjacent_mines)
         (brute, non_brute) = adjacent_section[:2]
            
         # Can only merge or find new sections based on frontier tiles in the adjacent section
@@ -863,9 +571,9 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return disjoint_sections
 
-    def getAdjacentSectionForSampleTile(self, sample, tile):
-        adjacent_coords = [(tile.x + i, tile.y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
-        mines_left_around_tile = tile.num_adjacent_mines
+    def getAdjacentSectionForSampleTile(self, sample, tile_coords, num_adjacent_mines):
+        adjacent_coords = [(tile_coords[0] + i, tile_coords[1] + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
+        mines_left_around_tile = num_adjacent_mines
         non_brute = set()
         brute = set()
 
@@ -885,7 +593,7 @@ class NoUnnecessaryGuessSolver(Agent):
             if adjacent is None:
                 # If dim==0, wall is a row at (wall_dim_location, y), for any y.
                 # If dim==1, wall is a colum at (x, wall_dim_location), for any x.
-                (wall_dim_location, dim) = self.getWallLocation((tile.x, tile.y), (x, y))
+                (wall_dim_location, dim) = self.getWallLocation(tile_coords, (x, y))
 
                 # If it's known where the entire wall is, remove all coordinates belonging to that wall.
                 if wall_dim_location is not None:
@@ -904,7 +612,7 @@ class NoUnnecessaryGuessSolver(Agent):
             else:
                 non_brute.add((x, y))
 
-        fringe = {(tile.x, tile.y, mines_left_around_tile)}
+        fringe = {(*tile_coords, mines_left_around_tile)}
 
         return (brute, non_brute, fringe)
 
@@ -1094,24 +802,33 @@ class NoUnnecessaryGuessSolver(Agent):
         SAFE = 11
         return [((x, y), FLAG) if is_mine else ((x, y), SAFE) for (x, y, is_mine) in sure_moves]
 
-    def cheekyHighlight(self, *args, transform=None):
+    def highlightSample(self, sample):
+        HIGHLIGHT_CODE = 2
+        
+        # Convert to (sample_coords, code). Ignores None tiles (which are wall tiles that are out of bounds).
+        h = [((x, y), HIGHLIGHT_CODE) for (y, row) in enumerate(sample) for (x, tile) in enumerate(row) if tile is not None]
+
+        self.cheekyHighlight(h)
+
+    def cheekyGridHighlight(self, *args, transform=None):
         self.handleHighlights(*args, add_highlights=True, transform=transform)
 
-    def removeHighlight(self, *args, transform=None):
+    def removeGridHighlight(self, *args, transform=None):
         self.handleHighlights(*args, add_highlights=False, transform=transform)
 
-    def cheekySampleHighlight(self, *args):
+    def cheekyHighlight(self, *args):
         self.handleHighlights(*args, add_highlights=True, transform=self.sample_pos)
 
-    def removeSampleHighlight(self, *args):
+    def removeHighlight(self, *args):
         self.handleHighlights(*args, add_highlights=False, transform=self.sample_pos)
 
-    def removeAllSampleHighlights(self, tiles):
+    def removeAllSampleHighlights(self, sample):
         if not self.renderer:
             return
-        
-        tiles = deepflatten(tiles, depth=1)
-        tile_coords = self.convertTilesToCoords(tiles, transform=self.sample_pos, return_removed_indexes=False)
+    
+        tile_coords = [(x, y) for (y, row) in enumerate(sample) for (x, tile) in enumerate(row) if tile is not None]
+        tile_coords = self.transformCoords(tile_coords, transform=self.sample_pos)
+
         self.renderer.removeAllTileHighlights(tile_coords)
 
     def handleHighlights(self, *args, add_highlights=None, transform=None):
@@ -1129,13 +846,21 @@ class NoUnnecessaryGuessSolver(Agent):
         if len(args) not in [1, 2]:
             raise TypeError("Expected 1 or 2 positional arguments. Received {}.".format(len(args)))
 
-        (tiles, codes) = self.getTilesAndCodesSeperate(*args)
-        (coords, removed_indexes) = self.convertTilesToCoords(tiles, transform=transform)
-        
-        # Remove codes that were associated with the removed tiles
-        codes = [code for (i, code) in enumerate(codes) if i not in removed_indexes]
-        
-        return list(zip(coords, codes))
+        (tile_coords, codes) = self.getTilesAndCodesSeperate(*args)
+
+        if transform:
+            tile_coords = self.transformCoords(tile_coords, transform=transform)
+
+            # Remove coordinates that end up out of bounds after transformation
+            for (i, (x, y)) in enumerate(tile_coords[::-1]):
+                inside_grid_bounds = (x >= 0 and y >= 0 and x < len(self.grid[0]) and y < len(self.grid))
+
+                if not inside_grid_bounds:
+                    index = len(tile_coords) - 1 - i
+                    tile_coords.pop(index)
+                    codes.pop(index)
+    
+        return list(zip(tile_coords, codes))
 
     def getTilesAndCodesSeperate(self, *args):
         if not args[0]:
@@ -1156,12 +881,12 @@ class NoUnnecessaryGuessSolver(Agent):
             args[0] = [args[0]]
 
         if len(args) == 2:
-            (tiles, code) = args
+            (tile_coords, code) = args
             code = str(code)
 
             # Flatten tiles down to 1D.
-            tiles = list(deepflatten(tiles, types=(list, set)))
-            codes = [code] * len(tiles)
+            tile_coords = list(deepflatten(tile_coords, types=(list, set)))
+            codes = [code] * len(tile_coords)
         else:
             tiles_with_codes = args[0]
 
@@ -1173,46 +898,20 @@ class NoUnnecessaryGuessSolver(Agent):
             except:
                 raise TypeError("Expected {} to be of form (Tile_like, highlight_code). Did you forget to pass the highlight code as a second parameter?".format(tiles_with_codes[0]))
 
-            tiles, codes = zip(*tiles_with_codes)
+            tile_coords, codes = zip(*tiles_with_codes)
             codes = list(map(str, codes))
 
-        return (tiles, codes)
+        # Truncate tuples (x, y, z, ...,) down to (x, y), which should be the tile coordinates.
+        tile_coords = list(map(lambda x: x[:2], tile_coords))
 
-    def convertTilesToCoords(self, tiles, transform=None, return_removed_indexes=True):
-        all_coords = []
-        removed_indexes = []
+        for (x, y) in tile_coords:
+            x = int(x)
+            y = int(y)
 
-        for i, tile in enumerate(tiles):
-            # Filter out None-type tiles (which represent outside-grid walls).
-            if not tile:
-                removed_indexes.append(i)
-                continue    
+        return (tile_coords, codes)
 
-            try:
-                if isinstance(tile, tuple):
-                    coords = tile[:2]
-                else:
-                    coords = (tile.x, tile.y)
-                
-                (x, y) = map(int, coords)
-            except:
-                raise TypeError("Object {} is not Tile-like. It should either have x and y attributes, or be a tuple (x, y, ...), where x and y can be converted to int.".format(tile))
-            
-            if transform:
-                x += transform[0]
-                y += transform[1]
-                
-            inside_grid_bounds = (x >= 0 and y >= 0 and x < len(self.grid[0]) and y < len(self.grid))
-
-            if inside_grid_bounds:
-                all_coords.append((x, y))
-            else:
-                removed_indexes.append(i)
-
-        if return_removed_indexes:
-            return (all_coords, removed_indexes)
-        else:
-            return all_coords
+    def transformCoords(self, coords, transform):
+        return list(map(lambda c: (c[0] + transform[0], c[1] + transform[1]), coords))
 
     def feedRenderer(self, renderer):
         self.renderer = renderer
