@@ -210,10 +210,12 @@ if __name__ == '__main__':
     # run(solver_agent, config=config, visualise=True, verbose=False, num_games=10, seed=56)
     # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
 
-    num_games = int(1e5)
-    print("starting test of {} games".format(num_games))
+    num_games = int(5)
+    # print("starting test of {} games".format(num_games))
     # start = time.time()
-    cProfile.run("run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "program.prof")
+    # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)
+    # cProfile.run("run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "program.prof")
+    cProfile.run("run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "solver.prof")
     # end = time.time()
     # print("Time taken: {}".format(end - start))
 
