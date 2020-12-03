@@ -57,8 +57,13 @@ class NoUnnecessaryGuessSolver(Agent):
         # all_samples = [self.getSampleAreasFromGrid(size, optimisation=op) for op in ops]
         # all_samples.append(self.getSampleAreasFromGridOPTIMISED(size))
 
-        # COMPARE JUST getSampleAreasFromGrid and getSampleAreasFromGridOPTIMISED
-        all_samples = [self.getSampleAreasFromGrid(size, optimisation=4), self.getSampleAreasFromGridOPTIMISED(size)]
+        # COMPARE JUST getSampleAreasFromGrid optimisations
+        all_samples = [
+            self.getSampleAreasFromGrid(size, optimisation=None),
+            self.getSampleAreasFromGridOPTIMISED(size),
+            self.getSampleAreasFromGridOPTIMISED2(size),
+            self.getSampleAreasFromGridOPTIMISED3(size),
+            ]
 
         for samples in all_samples:
             for (sample, sample_pos) in samples:
@@ -183,6 +188,44 @@ class NoUnnecessaryGuessSolver(Agent):
         for row in self.grid:
             row = ['@' if tile is None else str(tile.num_adjacent_mines) if tile.uncovered else '-' for tile in row]
             converted_grid.append(row)
+
+        # Note that these ranges will include the outside grid wall (1 tile thick at most)
+        # in the samples. This is required to be sure that the solver will not make unecessary
+        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
+        # in certain scenarios.
+        min_x = -1
+        min_y = -1
+        max_x = len(self.grid[0]) - size[0] + 1
+        max_y = len(self.grid) - size[1] + 1
+
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                pos = (x, y)
+                sample = self.getSampleAtPositionOPTIMISED5(pos, size, converted_grid)
+                self.sample_pos = pos
+                yield (sample, pos)
+
+    def getSampleAreasFromGridOPTIMISED2(self, size):
+        converted_grid = [[SampleTile(tile) for tile in row] for row in self.grid]
+
+        # Note that these ranges will include the outside grid wall (1 tile thick at most)
+        # in the samples. This is required to be sure that the solver will not make unecessary
+        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
+        # in certain scenarios.
+        min_x = -1
+        min_y = -1
+        max_x = len(self.grid[0]) - size[0] + 1
+        max_y = len(self.grid) - size[1] + 1
+
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                pos = (x, y)
+                sample = self.getSampleAtPositionOPTIMISED5(pos, size, converted_grid)
+                self.sample_pos = pos
+                yield (sample, pos)
+
+    def getSampleAreasFromGridOPTIMISED3(self, size):
+        converted_grid = [[copy(tile) for tile in row] for row in self.grid]
 
         # Note that these ranges will include the outside grid wall (1 tile thick at most)
         # in the samples. This is required to be sure that the solver will not make unecessary
@@ -1241,13 +1284,15 @@ class NoUnnecessaryGuessSolver(Agent):
     # print(searchForDefiniteSolutionsUsingCpSolver(c))
 
 class SampleTile():
-    def __init__(self, coords, tile):
+    def __init__(self, tile):
+        self.uncovered = tile.uncovered
+        self.is_flagged = tile.is_flagged
+        self.num_adjacent_mines = tile.num_adjacent_mines
+
+class SampleTile2():
+    def __init__(self, tile, coords):
         self.x = coords[0]
         self.y = coords[1]
-        
-        if tile is None:
-            self.value = '@'
-        elif tile.uncovered:
-            self.value = str(tile.num_adjacent_mines)
-        else:
-            self.value = '-'
+        self.uncovered = tile.uncovered
+        self.is_flagged = tile.is_flagged
+        self.num_adjacent_mines = tile.num_adjacent_mines
