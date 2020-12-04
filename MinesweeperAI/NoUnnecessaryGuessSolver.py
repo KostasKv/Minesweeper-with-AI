@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from Agent import Agent
 from Game import Game
 from random import randint
@@ -8,9 +5,7 @@ from itertools import chain, combinations
 from sympy import Matrix, pprint, ImmutableMatrix
 from iteration_utilities import deepflatten
 from copy import copy
-# import cp_solver
-
-from ortools.sat.python import cp_model
+from cp_solver import CpSolver
 
 
 class NoUnnecessaryGuessSolver(Agent):
@@ -18,10 +13,11 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sure_moves_not_played_yet = set()
         self.frontier_tiles = []
         self.disjoint_frontiers_and_fringes = []
-        self.SAMPLE_SIZE = (5, 5)
+        self.SAMPLE_SIZE = (6, 6)
         self.sample_pos = None
         self.samples_considered_already = set()
         self.renderer = None
+        self.cp_solver = CpSolver()
 
     def nextMove(self):
         if self.game_state == Game.State.START:
@@ -79,6 +75,35 @@ class NoUnnecessaryGuessSolver(Agent):
                     break
         
         return sure_moves
+
+    # def lookForSureMovesFromSamplesOfGridFocussingOnFrontierTiles(self, size):
+    #     samples = self.getSampleAreasFromGrid(size)
+    #     sure_moves = set()
+    #     count = 0
+
+    #     sections = self.getDisjointSections(self.grid)
+
+    #     for (sample, sample_pos) in samples:
+    #         sample_hash = self.getSampleHash(sample)
+    #         if sample_hash in self.samples_considered_already:
+    #             count += 1
+    #             continue
+
+    #         self.highlightSample(sample)
+    #         sure_moves = self.matrixAndBruteForceStrategies(sample)
+
+    #         self.samples_considered_already.add(sample_hash)
+
+
+    #         self.removeAllSampleHighlights(sample)
+    #         if sure_moves:
+    #             sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
+    #             sure_moves = self.pruneSureMoves(sure_moves)
+
+    #             if sure_moves:
+    #                 break
+        
+    #     return sure_moves
 
     @staticmethod
     def getSampleHash(sample):
@@ -478,7 +503,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def matrixBruteForceSearch(self, matrix, frontier):
         matrix_row_constraints = [list(map(int, list(matrix[i, :]))) for i in range(matrix.rows)]
-        definite_solutions = self.searchForDefiniteSolutionsUsingCpSolver(matrix_row_constraints)
+        definite_solutions = self.cp_solver.searchForDefiniteSolutions(matrix_row_constraints)
 
         sure_moves = set()
 
@@ -545,6 +570,35 @@ class NoUnnecessaryGuessSolver(Agent):
     #             sure_moves.add((x, y, is_mine))
 
     #     return sure_moves
+
+    # def getAllFrontierTiles(self):
+    #     frontier_tile_coords = set()
+
+    #     for (y, row) in enumerate(self.grid):
+    #         for (x, tile) in enumerate(row):
+    #             if tile.uncovered:
+    #                 continue
+
+    #             if self.isCoveredTileAFrontierTile(x, y):
+    #                 frontier_tile_coords.add((x, y))
+
+    #     return frontier_tile_coords
+
+    # def isCoveredTileAFrontierTile(self, tile_x, tile_y):
+    #     '''Assumes input is a covered tile '''
+
+    #     adjacent_coords = [(tile_x + i), (tile_y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)]
+
+    #     for (x, y) in adjacent_coords:
+    #         if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
+    #             continue
+
+    #         if self.grid[y][x].uncovered:
+    #             return True
+        
+    #     return False
+                
+                
 
     def getDisjointSections(self, sample):
         disjoint_sections = []
@@ -916,71 +970,6 @@ class NoUnnecessaryGuessSolver(Agent):
     def feedRenderer(self, renderer):
         self.renderer = renderer
 
-
-    class SolutionTracker(cp_model.CpSolverSolutionCallback):
-        def __init__(self, variables):
-            cp_model.CpSolverSolutionCallback.__init__(self)
-            self.__variables = variables
-            self.__solution_count = 0
-            self.count = [0] * len(variables)
-
-        def on_solution_callback(self):
-            self.__solution_count += 1
-
-            for (i, v) in enumerate(self.__variables):
-                self.count[i] += self.Value(v)
-
-        def result(self):
-            # print(self.__solution_count, self.count)
-            definite_solutions = []
-
-            for (i, x) in enumerate(self.count):
-                if x == 0:
-                    definite_solutions.append((i, False))
-                elif x == self.__solution_count:
-                    definite_solutions.append((i, True))
-
-            return definite_solutions
-
-
-    def searchForDefiniteSolutionsUsingCpSolver(self, matrix_row_constraints):
-        if not matrix_row_constraints:
-            return []
-
-        """Showcases calling the solver to search for all solutions."""
-        # Creates the model.
-        model = cp_model.CpModel()
-
-        # Create the variables
-        variables = [model.NewBoolVar(str(i)) for i in range(len(matrix_row_constraints[0]) - 1)]
-
-        c = [[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1], [0, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]]
-
-        # Create the constraints.
-        for constraint in matrix_row_constraints:
-            x = [int(constraint[i]) * variables[i] for i in range(len(constraint) - 1) if constraint[i] != 0]
-            sum_value = constraint[-1]
-            model.Add(sum(x) == sum_value)
-        
-        # Create a solver and solve.
-        solver = cp_model.CpSolver()
-        solution_tracker = self.SolutionTracker(variables)
-        status = solver.SearchForAllSolutions(model, solution_tracker)
-
-        return solution_tracker.result()
-
-    # c = [[1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 2],
-    # [0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    # [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0, -1],
-    # [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, -1, -1, -1, 0, 0, -1],
-    # [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1],
-    # [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 3],
-    # [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-    # [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, -1, 0, -1, 1, 0, 0]]
-
-   
-
-    # print(searchForDefiniteSolutionsUsingCpSolver(c))
 
 class SampleTile():
     def __init__(self, tile):
