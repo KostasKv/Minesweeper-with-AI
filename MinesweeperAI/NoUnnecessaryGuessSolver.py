@@ -1,6 +1,6 @@
 from Agent import Agent
 from Game import Game
-from random import randint
+from random import Random
 from itertools import chain, combinations
 from sympy import Matrix, pprint, ImmutableMatrix
 from iteration_utilities import deepflatten
@@ -9,7 +9,8 @@ from cp_solver import CpSolver
 
 
 class NoUnnecessaryGuessSolver(Agent):
-    def __init__(self):
+    def __init__(self, seed=0, use_optimised=1):
+        self.use_optimised = use_optimised
         self.sure_moves_not_played_yet = set()
         self.frontier_tiles = []
         self.disjoint_frontiers_and_fringes = []
@@ -18,6 +19,8 @@ class NoUnnecessaryGuessSolver(Agent):
         self.samples_considered_already = set()
         self.renderer = None
         self.cp_solver = CpSolver()
+        self.seed = seed
+        self.random = Random(seed)
 
     def nextMove(self):
         if self.game_state == Game.State.START:
@@ -25,12 +28,19 @@ class NoUnnecessaryGuessSolver(Agent):
         elif self.sure_moves_not_played_yet:
             move = self.sure_moves_not_played_yet.pop()
         else:
-            sure_moves = self.lookForSureMovesFromSamplesOfGrid(self.SAMPLE_SIZE)
-
+            if self.use_optimised == 1:
+                sure_moves = self.method1(self.SAMPLE_SIZE)
+            elif self.use_optimised == 2:
+                sure_moves = self.method2(self.SAMPLE_SIZE)
+            elif self.use_optimised == 3:
+                sure_moves = self.method3(self.SAMPLE_SIZE)
+            else:
+                raise ValueError("No optimisation method provides".format(self.use_optimised))
+            
             if sure_moves:
                 move = sure_moves.pop()
                 self.sure_moves_not_played_yet.update(sure_moves)
-                # s = self.getSampleAtPosition(self.sample_pos, self.SAMPLE_SIZE)
+                # s = self.getSampleAtPosition(self.saadjacent_mines_constraintsSIZE)
                 # self.cheekySampleHighlight(s, 2)
             else:
                 move = self.clickRandom()
@@ -45,13 +55,32 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return move
 
-    def lookForSureMovesFromSamplesOfGrid(self, size):
+    def method1(self, SAMPLE_SIZE):
+        sure_moves = self.lookForSureMovesFromSamplesOfGridFocussingOnFrontierTiles(SAMPLE_SIZE)
+
+        if not sure_moves:
+            sure_moves = self.lookForSureMovesFromAllPossibleSamplesOfGrid(SAMPLE_SIZE)
+
+        return sure_moves
+
+    def method2(self, SAMPLE_SIZE):
+        return self.lookForSureMovesFromAllPossibleSamplesOfGrid(SAMPLE_SIZE)
+
+    def method3(self, SAMPLE_SIZE):
+        sure_moves = self.lookForSureMovesFromSamplesOfGridFocussingOnFrontierTiles(SAMPLE_SIZE)
+
+        if not sure_moves:
+            sure_moves = self.lookForSureMovesFromAllPossibleSamplesWhichCouldLeadToASolution(SAMPLE_SIZE)
+        
+        return sure_moves
+
+    def lookForSureMovesFromAllPossibleSamplesOfGrid(self, size):
         samples = self.getSampleAreasFromGrid(size)
         sure_moves = set()
         count = 0
 
         for (sample, sample_pos) in samples:
-            sample_hash = self.getSampleHash(sample)
+            sample_hash = self.getSampleHash(sample, sample_pos)
             if sample_hash in self.samples_considered_already:
                 count += 1
                 continue
@@ -69,53 +98,104 @@ class NoUnnecessaryGuessSolver(Agent):
             self.removeAllSampleHighlights(sample)
             if sure_moves:
                 sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
-                sure_moves = self.pruneSureMoves(sure_moves)
+                sure_moves = self.pruneIllegalSureMoves(sure_moves)
 
                 if sure_moves:
                     break
         
         return sure_moves
 
-    # def lookForSureMovesFromSamplesOfGridFocussingOnFrontierTiles(self, size):
-    #     samples = self.getSampleAreasFromGrid(size)
-    #     sure_moves = set()
-    #     count = 0
+    def lookForSureMovesFromAllPossibleSamplesWhichCouldLeadToASolution(self, size):
+        samples = self.getSampleAreasFromGridOPTIMISED(size)
+        # samples = self.getSampleAreasFromGrid(size)
+        sure_moves = set()
+        count = 0
 
-    #     sections = self.getDisjointSections(self.grid)
+        for (sample, sample_pos) in samples:
+            sample_hash = self.getSampleHash(sample, sample_pos)
+            if sample_hash in self.samples_considered_already:
+                count += 1
+                continue
 
-    #     for (sample, sample_pos) in samples:
-    #         sample_hash = self.getSampleHash(sample)
-    #         if sample_hash in self.samples_considered_already:
-    #             count += 1
-    #             continue
+            self.highlightSample(sample)
+            sure_moves = self.matrixAndBruteForceStrategies(sample)
 
-    #         self.highlightSample(sample)
-    #         sure_moves = self.matrixAndBruteForceStrategies(sample)
+            self.samples_considered_already.add(sample_hash)
 
-    #         self.samples_considered_already.add(sample_hash)
+            # if sure_moves:
+            #     h = self.sureMovesToHighlights(sure_moves)
+            #     self.cheekySampleHighlight(h)
+            #     self.removeSampleHighlight(h)
 
+            self.removeAllSampleHighlights(sample)
+            if sure_moves:
+                sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
+                sure_moves = self.pruneIllegalSureMoves(sure_moves)
 
-    #         self.removeAllSampleHighlights(sample)
-    #         if sure_moves:
-    #             sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
-    #             sure_moves = self.pruneSureMoves(sure_moves)
-
-    #             if sure_moves:
-    #                 break
+                if sure_moves:
+                    break
         
-    #     return sure_moves
+        return sure_moves
+
+    def lookForSureMovesFromSamplesOfGridFocussingOnFrontierTiles(self, size):
+        sure_moves = set()
+        count = 0
+
+        frontier_tile_coords = self.getAllFrontierTiles()
+
+        for (x, y) in frontier_tile_coords:
+            (sample, sample_pos) = self.getSampleCenteredOnTile(x, y, size)
+
+            sample_hash = self.getSampleHash(sample, sample_pos)
+            if sample_hash in self.samples_considered_already:
+                count += 1
+                continue
+
+            self.highlightSample(sample)
+            sure_moves = self.matrixAndBruteForceStrategies(sample)
+
+            self.samples_considered_already.add(sample_hash)
+
+            self.removeAllSampleHighlights(sample)
+            if sure_moves:
+                sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
+                sure_moves = self.pruneIllegalSureMoves(sure_moves)
+
+                if sure_moves:
+                    break
+
+        return sure_moves
+
+    def getSampleCenteredOnTile(self, tile_x, tile_y, sample_size):
+        # Tile is either at exact center of sample, or slightly left/top of center
+        x_offset = ((sample_size[0] - 1) // 2)
+        y_offset = ((sample_size[1] - 1) // 2)
+        x = tile_x - x_offset
+        y = tile_y - y_offset
+
+        # Bound sample to include at most 1 tile thick outside-grid wall tiles.
+        max_sample_x = len(self.grid[0]) - sample_size[0] + 1
+        max_sample_y = len(self.grid) - sample_size[1] + 1
+        x = min(max(x, -1), max_sample_x)
+        y = min(max(y, -1), max_sample_y)
+
+        sample_pos = (x, y)
+        sample = self.getSampleAtPosition(sample_pos, sample_size, self.grid)
+
+        return (sample, sample_pos)
 
     @staticmethod
-    def getSampleHash(sample):
+    def getSampleHash(sample, sample_pos):
         tiles = chain.from_iterable(sample)
+
+        # Wall tiles      --> None
+        # Uncovered tiles --> Num adjacent mines
+        # Covered tiles   --> -1
         simpler_sample = tuple(None if tile is None else tile.num_adjacent_mines if tile.uncovered else -1 for tile in tiles)
-        return hash(simpler_sample)
+
+        return hash((simpler_sample, sample_pos))
 
     def getSampleAreasFromGrid(self, size):
-        # Removes coordinates from every tile. A sample's coordinates will be inferred
-        # from the element's position in the sample.
-        converted_grid = [[SampleTile(tile) for tile in row] for row in self.grid]
-
         # Note that these ranges will include the outside grid wall (1 tile thick at most)
         # in the samples. This is required to be sure that the solver will not make unecessary
         # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
@@ -128,11 +208,42 @@ class NoUnnecessaryGuessSolver(Agent):
         for y in range(min_y, max_y + 1):
             for x in range(min_x, max_x + 1):
                 pos = (x, y)
-                sample = self.getSampleAtPosition(pos, size, converted_grid)
-                self.sample_pos = pos
+                sample = self.getSampleAtPosition(pos, size, self.grid)
                 yield (sample, pos)
 
+    def getSampleAreasFromGridOPTIMISED(self, size):
+        # Note that these ranges will include the outside grid wall (1 tile thick at most)
+        # in the samples. This is required to be sure that the solver will not make unecessary
+        # guesses in a turn as knowing tiles reside next to the grid boundary is useful info
+        # in certain scenarios.
+        min_x = -1
+        min_y = -1
+        max_x = len(self.grid[0]) - size[0] + 1
+        max_y = len(self.grid) - size[1] + 1
+
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                pos = (x, y)
+
+                # Only return samples that could possibly lead to uncovering a hidden tile
+                if self.existsHiddenTileInOrJustOutsideSample(pos, size):
+                    sample = self.getSampleAtPosition(pos, size, self.grid)
+                    yield (sample, pos)
+
+    def existsHiddenTileInOrJustOutsideSample(self, pos, size):
+        for x in range(pos[0] - 1, pos[0] + size[0] + 1):
+            for y in range(pos[1] - 1, pos[1] + size[1] + 1):
+                # Out of bounds
+                if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
+                    continue
+
+                if not self.grid[y][x].uncovered and not self.grid[y][x].is_flagged:
+                    return True
+        
+        return False
+
     def getSampleAtPosition(self, pos, size, grid):
+        self.sample_pos = pos
         (x, y) = pos
         (columns, rows) = size
 
@@ -212,18 +323,32 @@ class NoUnnecessaryGuessSolver(Agent):
 
             # # Look for solutions that can be extracted quickly from the matrix (without
             # # resorting to bruteforcing all possible mine configurations)
-            # (adjusted_matrix, adjusted_frontier, quick_sure_moves) = self.matrixQuickerSearch(matrix, frontier)
+            # quick_sure_moves = self.matrixQuickerSearch(matrix, frontier)
 
-            bruted_sure_moves = set()
+            # # solutions = self.minMaxBoundarySolutionSearch(matrix)
+            # # quick_sure_moves = {(*frontier[i], is_mine) for (i, is_mine) in solutions}
+                
+
+            # # pprint(matrix)
+            # # col_solutions = [frontier.index((x, y)), i for (x, y, _) in sure]
+            # (adjusted_matrix, cols_deleted) = self.updateMatrixWithSolutions(matrix, frontier, quick_sure_moves)
+            # # pprint(adjusted_matrix)
+            # # print(frontier)
+            # adjusted_frontier = [coords for (i, coords) in enumerate(frontier) if i not in cols_deleted]
+            # # print(adjusted_frontier)
+
+            # bruted_sure_moves = set()
             # # brute_start_index = self.findBruteStartIndex(adjusted_frontier, brute)
-            adjusted_matrix = matrix
-            quick_sure_moves = set()
-            adjusted_frontier = frontier
+            # adjusted_matrix = matrix
+            # quick_sure_moves = set()
+            # adjusted_frontier = frontier
             # Exhaustive brute force search if there are bruteable tiles without solutions left.
-            if adjusted_matrix.rows > 1:
-                bruted_sure_moves = self.matrixBruteForceSearch(adjusted_matrix, adjusted_frontier)
+            # if adjusted_matrix.rows > 1:
+            indices_of_inside_frontier = [i for (i, (x, y)) in enumerate(frontier) if x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample)]
+
+            bruted_sure_moves = self.matrixBruteForceSearch(matrix, frontier, indices_of_inside_frontier, self.mines_left)
             
-            all_possible_sure_moves.update(quick_sure_moves | bruted_sure_moves)
+            all_possible_sure_moves.update(bruted_sure_moves)
 
         return all_possible_sure_moves
 
@@ -232,21 +357,26 @@ class NoUnnecessaryGuessSolver(Agent):
         finished_searching = False
         tiles_removed = []
 
+        # Don't want to affect original frontier list
+        frontier = copy(frontier)
+
         while not finished_searching:
             solutions = self.minMaxBoundarySolutionSearch(matrix)
 
             if solutions:
-                for (frontier_index, is_mine) in solutions:
-                    (x, y) = frontier[frontier_index]
-                    sure_moves.add((x, y, is_mine))
+                found_sure_moves = {(*frontier[i], is_mine) for (i, is_mine) in solutions}
+                sure_moves.update(found_sure_moves)
 
                 # pprint(matrix)
-                (matrix, cols_deleted) = self.updateMatrixWithSolutions(matrix, solutions)
+                (matrix, cols_deleted) = self.updateMatrixWithSolutions(matrix, frontier, found_sure_moves)
                 
                 # for i in cols_deleted:
                 #     removed = frontier.pop(i)
                 #     tiles_removed.append(removed)
 
+                # Check that claimed cols deleted match up with the cols that were expected to be deleted.
+                assert(all(col_to_delete in cols_deleted for (col_to_delete, _) in solutions))
+                
                 # Delete (and record) frontier tiles from list that
                 # represented the columns that were deleted from the matrix
                 for i in range(len(frontier) - 1, -1, -1):
@@ -264,7 +394,7 @@ class NoUnnecessaryGuessSolver(Agent):
         #     pprint(matrix)
         #     print()
 
-        return (matrix, frontier, sure_moves)
+        return sure_moves
 
     @staticmethod
     def minMaxBoundarySolutionSearch(matrix):
@@ -296,8 +426,13 @@ class NoUnnecessaryGuessSolver(Agent):
         return solutions
 
     @staticmethod
-    def updateMatrixWithSolutions(matrix, solutions):
-        for (column, is_mine) in solutions:
+    def updateMatrixWithSolutions(matrix, frontier, sure_moves):
+        if not sure_moves:
+            return matrix, []
+
+        for (x, y, is_mine) in sure_moves:
+            column = frontier.index((x, y))
+
             for i in range(matrix.rows):
                 if is_mine and matrix[i, column] != 0:
                     matrix[i, matrix.cols - 1] -= matrix[i, column]
@@ -317,7 +452,6 @@ class NoUnnecessaryGuessSolver(Agent):
                 nonzero_cols.append(j)
         
         matrix = matrix[nonzero_rows, nonzero_cols + [cols - 1]]
-        
         return (matrix, cols_deleted)
 
     @staticmethod
@@ -337,9 +471,10 @@ class NoUnnecessaryGuessSolver(Agent):
         
         return index
 
-    def matrixBruteForceSearch(self, matrix, frontier):
+    def matrixBruteForceSearch(self, matrix, frontier, indices_of_frontier_tiles_inside_sample, mines_left_in_entire_board):
         matrix_row_constraints = [list(map(int, list(matrix[i, :]))) for i in range(matrix.rows)]
-        definite_solutions = self.cp_solver.searchForDefiniteSolutions(matrix_row_constraints)
+        total_mines_constraint = [1 if i in indices_of_frontier_tiles_inside_sample else 0 for i in range(len(frontier))] + [mines_left_in_entire_board]
+        definite_solutions = self.cp_solver.searchForDefiniteSolutions(matrix_row_constraints, total_mines_constraint)
 
         sure_moves = set()
 
@@ -349,32 +484,32 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return sure_moves
 
-    # def getAllFrontierTiles(self):
-    #     frontier_tile_coords = set()
+    def getAllFrontierTiles(self):
+        frontier_tile_coords = set()
 
-    #     for (y, row) in enumerate(self.grid):
-    #         for (x, tile) in enumerate(row):
-    #             if tile.uncovered:
-    #                 continue
+        for (y, row) in enumerate(self.grid):
+            for (x, tile) in enumerate(row):
+                if tile.uncovered or tile.is_flagged:
+                    continue
 
-    #             if self.isCoveredTileAFrontierTile(x, y):
-    #                 frontier_tile_coords.add((x, y))
+                if self.isCoveredTileAFrontierTile(x, y):
+                    frontier_tile_coords.add((x, y))
 
-    #     return frontier_tile_coords
+        return frontier_tile_coords
 
-    # def isCoveredTileAFrontierTile(self, tile_x, tile_y):
-    #     '''Assumes input is a covered tile '''
+    def isCoveredTileAFrontierTile(self, tile_x, tile_y):
+        '''Assumes input is a non-flagged covered tile '''
 
-    #     adjacent_coords = [(tile_x + i), (tile_y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)]
+        adjacent_coords = [((tile_x + i), (tile_y + j)) for i in (-1, 0, 1) for j in (-1, 0, 1)]
 
-    #     for (x, y) in adjacent_coords:
-    #         if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
-    #             continue
+        for (x, y) in adjacent_coords:
+            if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
+                continue
 
-    #         if self.grid[y][x].uncovered:
-    #             return True
+            if self.grid[y][x].uncovered:
+                return True
         
-    #     return False
+        return False
 
     def getDisjointSections(self, sample):
         disjoint_sections = []
@@ -531,8 +666,7 @@ class NoUnnecessaryGuessSolver(Agent):
                 # on the fringe tile's adjacent mine constraint. Include it in the equation
                 # by giving it a coefficient of 1, otherwise exclude it with a
                 # coefficient of 0.
-                if abs(frontier_x -
-                       fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1:
+                if abs(frontier_x - fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1:
                     matrix_row.append(1)
                 else:
                     matrix_row.append(0)
@@ -550,12 +684,12 @@ class NoUnnecessaryGuessSolver(Agent):
         return list(map(lambda move: ((move[0] + x), (move[1] + y), move[2]), sample_moves))
 
     def clickRandom(self):
-        x = randint(0, len(self.grid[0]) - 1)
-        y = randint(0, len(self.grid) - 1)
+        x = self.random.randint(0, len(self.grid[0]) - 1)
+        y = self.random.randint(0, len(self.grid) - 1)
 
         while self.isIllegalClick(x, y):
-            x = randint(0, len(self.grid[0]) - 1)
-            y = randint(0, len(self.grid) - 1)
+            x = self.random.randint(0, len(self.grid[0]) - 1)
+            y = self.random.randint(0, len(self.grid) - 1)
 
         print("({}, {}) chosen at random".format(x, y))
         return (x, y, False)
@@ -576,18 +710,19 @@ class NoUnnecessaryGuessSolver(Agent):
         return False
 
     def update(self, grid, mines_left, game_state):
-        self.grid = grid
+        # Removes coordinates from every tile. A sample's coordinates will be inferred
+        # from the element's position in the sample.
+        converted_grid = [[SampleTile(tile) for tile in row] for row in grid]
+        self.grid = converted_grid
+
         self.mines_left = mines_left
         self.game_state = game_state
 
-        self.sure_moves_not_played_yet = self.pruneSureMoves(self.sure_moves_not_played_yet)
+        # Last played move could have uncovered multiple tiles, making some sure moves now illegal moves.
+        self.sure_moves_not_played_yet = self.pruneIllegalSureMoves(self.sure_moves_not_played_yet)
 
-    '''
-        Gets rid of sure moves that have been automatically uncovered
-        because of a previous move.
-    '''
-
-    def pruneSureMoves(self, sure_moves):
+    def pruneIllegalSureMoves(self, sure_moves):
+        ''' Gets rid of sure moves that cannot actually be played. '''
         valid_sure_moves = set()
 
         for move in sure_moves:
@@ -601,6 +736,7 @@ class NoUnnecessaryGuessSolver(Agent):
         return valid_sure_moves
 
     def onGameBegin(self):
+        self.random = Random(self.seed)
         self.sure_moves_not_played_yet = set()
         self.samples_considered_already = set()
 
@@ -655,6 +791,8 @@ class NoUnnecessaryGuessSolver(Agent):
     def removeAllSampleHighlights(self, sample):
         if not self.renderer:
             return
+        elif not self.sample_pos:
+            raise ValueError("self.sample_pos has not been assigned a position.")
     
         tile_coords = [(x, y) for (y, row) in enumerate(sample) for (x, tile) in enumerate(row) if tile is not None]
         tile_coords = self.transformCoords(tile_coords, transform=self.sample_pos)

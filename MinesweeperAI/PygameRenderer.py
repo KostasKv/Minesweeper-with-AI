@@ -328,6 +328,9 @@ class PygameRenderer(Renderer):
         for (x, y) in tiles:
             self.tile_sprites[y][x].removeAllHighlights()
 
+        pygame.event.pump()
+        self.draw()
+
     def draw(self):
         for group in self.things_to_draw:
             group.draw(self.screen)

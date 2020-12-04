@@ -155,10 +155,12 @@ class Executor():
             return (self.game.grid, self.game.mines_left, self.game.state)
 
             
-def playGames(executor, renderer, verbose):
+def playGames(executor, renderer, verbose, num_games):
     # First move of all games.
     action = renderer.getNextMove()
     result = executor.makeMove(action)
+
+    wins = 0
 
     # Play until all games are finished
     while result:
@@ -168,9 +170,14 @@ def playGames(executor, renderer, verbose):
         if verbose:
             print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
 
+        if result[2] == Game.State.WIN:
+            wins += 1
+
         renderer.updateFromResult(result)
         action = renderer.getNextMove()
         result = executor.makeMove(action)
+
+    print("wins: {} ({}%)".format(wins, round((wins / num_games) * 100, 2)))
 
     renderer.onEndOfGames()
 
@@ -188,17 +195,24 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10
     else:
         renderer = NoScreenRenderer(config, game.grid, agent)
 
-    playGames(executor, renderer, verbose)
+    playGames(executor, renderer, verbose, num_games)
 
+def test(config, num_games, seed):
+    solver_agent1 = NoUnnecessaryGuessSolver(seed=seed, use_optimised=1)
+    solver_agent2 = NoUnnecessaryGuessSolver(seed=seed, use_optimised=2)
+    solver_agent3 = NoUnnecessaryGuessSolver(seed=seed, use_optimised=3)
+    run(solver_agent1, config=config, visualise=False, verbose=False, num_games=num_games, seed=seed)
+    run(solver_agent2, config=config, visualise=False, verbose=False, num_games=num_games, seed=seed)
+    run(solver_agent3, config=config, visualise=False, verbose=False, num_games=num_games, seed=seed)
 
 if __name__ == '__main__':
-    profile = False
+    profile = True
 
     # Solvers
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
-    solver_agent = NoUnnecessaryGuessSolver()
+    solver_agent = NoUnnecessaryGuessSolver(seed=14, use_optimised=3)
 
     # Learners
     cbr_agent_1 = CBRAgent1()
@@ -206,19 +220,21 @@ if __name__ == '__main__':
     config = {'rows': 16, 'columns': 30, 'num_mines': 99}
 
     if profile:
-        num_games = int(10)
+        num_games = int(5)
         # print("starting test of {} games".format(num_games))
         # start = time.time()
         # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)
         # cProfile.run("run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "program.prof")
-        cProfile.run("run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "solver.prof")
+        # cProfile.run("run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "solver.prof")
+        cProfile.run("test(config, num_games, 3)", "solver.prof")
         # end = time.time()
         # print("Time taken: {}".format(end - start))
     else:
         # run(verbose=0, config=config, seed=57, visualise=True)
         # run(random_agent, config=config, verbose=True, visualise=True)
         # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
-        run(solver_agent, config=config, visualise=True, verbose=False, num_games=10, seed=56)
+        run(solver_agent, config=config, visualise=True, verbose=False, num_games=2, seed=56)
+        # test(config, 1, 3)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
 
 

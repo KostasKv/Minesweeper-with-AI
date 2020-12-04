@@ -40,14 +40,14 @@ class CpSolver():
     #         self.StopSearch()
 
 
-    def searchForDefiniteSolutions(self, matrix_row_constraints):
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, total_mines_constraint):
         methods_to_use = [3, 4]
 
         results = []
 
         for i in methods_to_use:
             method = getattr(self, "searchForDefiniteSolutions{}".format(i))
-            result = method(matrix_row_constraints)
+            result = method(adjacent_mines_constraints, total_mines_constraint)
             results.append(result)
 
         # All results are expected to be the same!
@@ -56,7 +56,7 @@ class CpSolver():
         return results[0]
         
 
-    def searchForDefiniteSolutions1(self, matrix_row_constraints):
+    def searchForDefiniteSolutions1(self, matrix_row_constraints, total_mines_constraint):
         if not matrix_row_constraints:
             return []
 
@@ -67,14 +67,22 @@ class CpSolver():
         # Create the variables
         variables = [model.NewBoolVar(str(i)) for i in range(len(matrix_row_constraints[0]) - 1)]
 
-        c = [[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1], [0, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]]
+        # c = [[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1], [0, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]]
 
-        # Create the constraints.
+        # Add the adjacent-mines constraints.
         for constraint in matrix_row_constraints:
             x = [int(constraint[i]) * variables[i] for i in range(len(constraint) - 1) if constraint[i] != 0]
             sum_value = constraint[-1]
             model.Add(sum(x) == sum_value)
         
+        constraint = total_mines_constraint[:-1]
+        total_mines_left = total_mines_constraint[-1]
+
+        # Sample has unknown proportion of total covered unflagged tiles. Therefore total mines left can only
+        # give an absolute upper limit on the amount of mines that there can within the sample's covered tiles.
+        x = [int(constraint[i]) * variables[i] for i in range(len(constraint) - 1) if constraint[i] != 0]
+        model.Add(sum(x) <= total_mines_left)
+
         # Create a solver and solve.
         solver = cp_model.CpSolver()
         solution_tracker = self.SolutionTracker(variables)
@@ -82,11 +90,11 @@ class CpSolver():
 
         return solution_tracker.result()
 
-    def searchForDefiniteSolutions2(self, matrix_row_constraints):
+    def searchForDefiniteSolutions2(self, matrix_row_constraints, mines_left_in_entire_board):
         if not matrix_row_constraints:
             return []
 
-        constraints, variables = self.getConstraintsAndVarsFromMatrixRows(matrix_row_constraints)
+        constraints, variables = self.getConstraintsAndVarsFromMatrixRows(matrix_row_constraints, mines_left_in_entire_board)
 
         model = self.getModelFromConstraintsAndVars(constraints, variables)
 
@@ -123,11 +131,11 @@ class CpSolver():
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
 
-    def searchForDefiniteSolutions3(self, matrix_row_constraints):
+    def searchForDefiniteSolutions3(self, matrix_row_constraints, total_mines_constraint):
         if not matrix_row_constraints:
             return []
 
-        (proper_model, variables) = self.getModelFromMatrixRows(matrix_row_constraints)
+        (proper_model, variables) = self.getModelFromMatrixRows(matrix_row_constraints, total_mines_constraint)
 
         solver = cp_model.CpSolver()
         status = solver.Solve(proper_model)
@@ -162,11 +170,11 @@ class CpSolver():
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
 
-    def searchForDefiniteSolutions4(self, matrix_row_constraints):
+    def searchForDefiniteSolutions4(self, matrix_row_constraints, mines_left_in_entire_board):
         if not matrix_row_constraints:
             return []
 
-        (proper_model, variables) = self.getModelFromMatrixRows(matrix_row_constraints)
+        (proper_model, variables) = self.getModelFromMatrixRows(matrix_row_constraints, mines_left_in_entire_board)
 
         solver = cp_model.CpSolver()
         status = solver.Solve(proper_model)
@@ -208,7 +216,7 @@ class CpSolver():
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
 
-    def getConstraintsAndVarsFromMatrixRows(self, matrix_rows):
+    def getConstraintsAndVarsFromMatrixRows(self, matrix_rows, total_mines_constraint):
         model = cp_model.CpModel()
         
         # Create the variables
@@ -221,6 +229,14 @@ class CpSolver():
             sum_value = row[-1]
             constraint = cp_model.BoundedLinearExpression(sum(x), (sum_value, sum_value))
             constraints.append(constraint)
+        
+        constraint = total_mines_constraint[:-1]
+        total_mines_left = total_mines_constraint[-1]
+
+        # Sample has unknown proportion of total covered unflagged tiles. Therefore total mines left can only
+        # give an absolute upper limit on the amount of mines that there can within the sample's covered tiles.
+        x = [int(constraint[i]) * variables[i] for i in range(len(constraint) - 1) if constraint[i] != 0]
+        model.Add(sum(x) <= total_mines_left)
 
         return (constraints, variables)
 
@@ -235,7 +251,7 @@ class CpSolver():
 
         return model, variables
 
-    def getModelFromMatrixRows(self, matrix_rows):
+    def getModelFromMatrixRows(self, matrix_rows, total_mines_constraint):
         model = cp_model.CpModel()
         
         # Create the variables
@@ -247,6 +263,14 @@ class CpSolver():
             x = [int(row[i]) * variables[i] for i in range(len(row) - 1) if row[i] != 0]
             sum_value = row[-1]
             model.Add(sum(x) == sum_value)
+
+        constraint = total_mines_constraint[:-1]
+        total_mines_left = total_mines_constraint[-1]
+
+        # Sample has unknown proportion of total covered unflagged tiles. Therefore total mines left can only
+        # give an absolute upper limit on the amount of mines that there can within the sample's covered tiles.
+        x = [int(constraint[i]) * variables[i] for i in range(len(constraint) - 1) if constraint[i] != 0]
+        model.Add(sum(x) <= total_mines_left)
 
         return (model, variables)
 
