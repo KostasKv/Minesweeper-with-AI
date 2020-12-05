@@ -5,13 +5,18 @@ from ortools.sat.python import cp_model
 from copy import deepcopy
 
 class CpSolver():
-    def searchForDefiniteSolutions(self, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample):
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=None):
         num_frontier = len(frontier_tile_is_inside_sample)
-        (proper_model, variables) = self.getModelWithBoardConstraints(num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
-        
-        # Get first solution
+
+        if total_mines_left and num_tiles_outside_sample:
+            (proper_model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
+        else:
+            (proper_model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints)
+
+        # Get first solution (there should always be atleast one as constraints given are based off of
+        # a valid board. No need to check if status is infeasible)
         solver = cp_model.CpSolver()
-        status = solver.Solve(proper_model)
+        solver.Solve(proper_model)
         potential_definites = [solver.BooleanValue(v) for v in variables]
         
         # Test each variable using an opposite assignment from that in the first solution.
@@ -41,20 +46,11 @@ class CpSolver():
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
 
-    def getModelWithBoardConstraints(self, num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample):
+    def getModelWithAllBoardConstraints(self, num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged=None):
         ''' Create a model built with all useful constraints possible for minesweeper using the information given.
             Assumes adjacent mine constraint coefficients are either 1 or 0. '''
-        model = cp_model.CpModel()
-        
-        # Create the variables
-        variables = [model.NewBoolVar(str(i)) for i in range(num_frontier)]
+        (model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints)
 
-        # Create adjacent mines constraints
-        for row in adjacent_mines_constraints:
-            x = [variables[i] for i in range(len(row) - 1) if row[i] != 0]
-            sum_value = row[-1]
-            model.Add(sum(x) == sum_value)
-        
         # Split variables into those that are inside the sample, and those that are outside it.
         v_inside = []
         v_outside = []
@@ -66,6 +62,27 @@ class CpSolver():
 
         # Create total mines constraint
         min_mines = total_mines_left - num_tiles_outside_sample + len(v_outside)
-        model.Add(min_mines - sum(v_outside) <= sum(v_inside) <= total_mines_left)
+
+        if outside_flagged is None:
+            model.Add(min_mines - sum(v_outside) <= sum(v_inside) <= total_mines_left)
+        else:
+            model.Add(min_mines - sum(v_outside) - outside_flagged <= sum(v_inside) <= total_mines_left)
 
         return (model, variables)
+    
+    def getModelWithAdjacentConstraints(self, num_frontier, adjacent_mines_constraints):
+        ''' Returns a model built with adjacent mine constraints.
+            Assumes adjacent mine constraint coefficients are either 1 or 0. '''
+        model = cp_model.CpModel()
+        
+        # Create the variables
+        variables = [model.NewBoolVar(str(i)) for i in range(num_frontier)]
+
+        # Create adjacent mines constraints
+        for row in adjacent_mines_constraints:
+            x = [variables[i] for i in range(len(row) - 1) if row[i] != 0]
+            sum_value = row[-1]
+            model.Add(sum(x) == sum_value)
+
+        return (model, variables)
+    

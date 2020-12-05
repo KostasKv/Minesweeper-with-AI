@@ -71,7 +71,8 @@ class NoUnnecessaryGuessSolver(Agent):
         self.highlightSample(sample)
 
         # sure_moves = self.matrixAndBruteForceStrategies1(sample)
-        sure_moves = self.matrixAndBruteForceStrategies2(sample)
+        sure_moves = self.bruteForceWithAllConstraints(sample)
+        sure_moves1 = self.bruteForceWithJustAdacentMinesConstraints(sample)
 
         # sym_diff = sure_moves ^ sure_moves2
         # if sym_diff:
@@ -242,10 +243,8 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return adjacents
 
-    def matrixAndBruteForceStrategies1(self, sample):
+    def bruteForceWithAllConstraints(self, sample):
         disjoint_sections = self.getDisjointSections(sample)
-        all_possible_sure_moves = set()
-        bruteforce_candidates = []
         
         all_frontier = set()
         all_fringe = set()
@@ -269,37 +268,68 @@ class NoUnnecessaryGuessSolver(Agent):
         num_tiles_outside_sample = num_tiles_in_grid - num_non_wall_tiles_in_sample
 
         bruted_sure_moves = self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, self.mines_left, num_tiles_outside_sample)
-        
-        all_possible_sure_moves.update(bruted_sure_moves)
 
-        return all_possible_sure_moves
+        return bruted_sure_moves
 
-    def matrixAndBruteForceStrategies2(self, sample):
+    def bruteForceWithJustAdacentMinesConstraints(self, sample):
         disjoint_sections = self.getDisjointSections(sample)
-        all_possible_sure_moves = set()
-        bruteforce_candidates = []
+        
+        all_frontier = set()
+        all_fringe = set()
+
+        # Unite all disjoint sections. (EXPERIMENTAL)
+        for (brute, non_brute, fringe) in disjoint_sections:
+            all_frontier.update(brute | non_brute)
+            all_fringe.update(fringe)
+
+        sure_moves = self.bruteForceWithJustAdacentMinesConstraintsALL(sample, all_frontier, all_fringe)
+        sure_moves2 = self.bruteForceWithJustAdacentMinesConstraintsDISJOINT(sample, disjoint_sections)
+
+        assert(not sure_moves.symmetric_difference(sure_moves2))
+
+        return sure_moves
+
+    def bruteForceWithJustAdacentMinesConstraintsALL(self, sample, all_frontier, all_fringe):
+        # Convert to a list so that tiles are ordered. That way we can reference
+        # which matrix column refers to which tile (i'th column in matrix represents
+        # i'th tile in list).
+        frontier = list(all_frontier)
+
+        adjacent_mines_constraints = self.createConstraintMatrixOfSample(frontier, all_fringe, self.mines_left)
+       
+        # Prep arguments for building constraints for the bruteforce algorithm
+        frontier_tile_is_inside_sample = [1 if x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample) else 0 for (x, y) in frontier]
+        num_non_wall_tiles_in_sample = sum(1 for tile in chain(sample) if tile is not None)
+        num_tiles_in_grid = len(self.grid[0]) * len(self.grid)
+        num_tiles_outside_sample = num_tiles_in_grid - num_non_wall_tiles_in_sample
+
+        sure_moves = self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample)
+
+        return sure_moves
+
+    def bruteForceWithJustAdacentMinesConstraintsDISJOINT(self, sample, disjoint_sections):
+        all_sure_moves = set()
 
         for (brute, non_brute, fringe) in disjoint_sections:
             # Convert to a list so that tiles are ordered. That way we can reference
             # which matrix column refers to which tile (i'th column in matrix represents
             # i'th tile in list).
-            frontier = list(non_brute) + list(brute)
+            frontier = list(brute | non_brute)
 
             adjacent_mines_constraints = self.createConstraintMatrixOfSample(frontier, fringe, self.mines_left)
-
+        
             # Prep arguments for building constraints for the bruteforce algorithm
             frontier_tile_is_inside_sample = [1 if x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample) else 0 for (x, y) in frontier]
             num_non_wall_tiles_in_sample = sum(1 for tile in chain(sample) if tile is not None)
             num_tiles_in_grid = len(self.grid[0]) * len(self.grid)
             num_tiles_outside_sample = num_tiles_in_grid - num_non_wall_tiles_in_sample
 
-            bruted_sure_moves = self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, self.mines_left, num_tiles_outside_sample)
+            sure_moves = self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample)
+            all_sure_moves.update(sure_moves)
         
-            all_possible_sure_moves.update(bruted_sure_moves)
+        return all_sure_moves
 
-        return all_possible_sure_moves
-
-    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample):
+    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left=None, num_tiles_outside_sample=None):
         definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
         sure_moves = set()
