@@ -199,8 +199,8 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10
 
 
 if __name__ == '__main__':
-    profile = False
-    benchmark = True
+    profile = True
+    benchmark = False
 
     run_seed = 57
     agent_seed = 14
@@ -219,16 +219,10 @@ if __name__ == '__main__':
     if profile:
         num_games = int(10)
         print("Profiling. Running {} games...".format(num_games))
-        # print("starting test of {} games".format(num_games))
-        # start = time.time()
-        # run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)
         # cProfile.run("run(pick_first_uncovered_agent, config=config, visualise=False, verbose=False, num_games=num_games)", "program.prof")
         cProfile.run("run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games, seed=run_seed)", "solver.prof")
-        # end = time.time()
-        # print("Time taken: {}".format(end - start))
     if benchmark:
         num_games = 100
-        print("Benchmarking. Running {} games...".format(num_games))
         start = time.time()
         run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games, seed=run_seed)
         end = time.time()
@@ -239,8 +233,6 @@ if __name__ == '__main__':
         # run(random_agent, config=config, verbose=True, visualise=True)
         # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
         run(solver_agent, config=config, visualise=True, verbose=False, num_games=num_games, seed=run_seed)
-        # test(config, 1, 3)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
-
 
     print("Program stopped.")
