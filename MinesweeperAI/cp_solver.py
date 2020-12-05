@@ -5,18 +5,23 @@ from ortools.sat.python import cp_model
 from copy import deepcopy
 
 class CpSolver():
-    def searchForDefiniteSolutions(self, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=None):
-        num_frontier = len(frontier_tile_is_inside_sample)
-
-        if total_mines_left and num_tiles_outside_sample:
-            (proper_model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=None):
+        if total_mines_left and num_tiles_outside_sample and frontier_tile_is_inside_sample:
+            num_frontier = len(frontier_tile_is_inside_sample)
+            (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
+        elif adjacent_mines_constraints:
+            num_frontier = len(adjacent_mines_constraints[0]) - 1
+            (model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints)
         else:
-            (proper_model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints)
+            return []   # No adjacent mine constraints given, and not enough information for total-mines-left constraint.)
 
+        return self.searchForDefiniteSolutionsUsingModelAndItsVars(model, variables)
+
+    def searchForDefiniteSolutionsUsingModelAndItsVars(self, model, variables):
         # Get first solution (there should always be atleast one as constraints given are based off of
         # a valid board. No need to check if status is infeasible)
         solver = cp_model.CpSolver()
-        solver.Solve(proper_model)
+        solver.Solve(model)
         potential_definites = [solver.BooleanValue(v) for v in variables]
         
         # Test each variable using an opposite assignment from that in the first solution.
@@ -30,7 +35,7 @@ class CpSolver():
             # Put in opposite-val constraint on variable we're testing.
             var = variables[definite_index]
             opp_val = not potential_definites[definite_index]
-            test_model = deepcopy(proper_model)
+            test_model = deepcopy(model)
             test_model.Add(var == opp_val)
 
             status = solver.Solve(test_model)
@@ -45,6 +50,7 @@ class CpSolver():
                         potential_definites[i] = None
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
+
 
     def getModelWithAllBoardConstraints(self, num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged=None):
         ''' Create a model built with all useful constraints possible for minesweeper using the information given.
