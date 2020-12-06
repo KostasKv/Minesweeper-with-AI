@@ -2,7 +2,6 @@ from Agent import Agent
 from Game import Game
 from random import Random
 from itertools import chain, combinations
-from sympy import Matrix, pprint, ImmutableMatrix
 from iteration_utilities import deepflatten
 from copy import copy
 from cp_solver import CpSolver
