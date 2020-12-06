@@ -19,6 +19,8 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sure_moves_not_played_yet = set()
         self.cp_solver = CpSolver()
         self.renderer = None
+        self.sample_count = 0
+        self.samples_with_solution_count = 0
 
     def nextMove(self):
         if self.game_state == Game.State.START:
@@ -35,6 +37,7 @@ class NoUnnecessaryGuessSolver(Agent):
             if sure_moves:
                 move = sure_moves.pop()
                 self.sure_moves_not_played_yet.update(sure_moves)
+                self.samples_with_solution_count += 1
             else:
                 move = self.clickRandom()
         
@@ -69,6 +72,7 @@ class NoUnnecessaryGuessSolver(Agent):
         return set()
     
     def getAllSureMovesFromSample(self, sample, sample_pos):
+        self.sample_count += 1
         # self.highlightSample(sample)
 
         if self.use_num_mines_constraint:
@@ -113,14 +117,14 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def getSamplePosOfSampleCenteredOnTile(self, tile_x, tile_y, sample_size):
         # Tile is either at exact center of sample, or slightly left/top of center
-        x_offset = ((sample_size[0] - 1) // 2)
-        y_offset = ((sample_size[1] - 1) // 2)
+        x_offset = ((sample_size[1] - 1) // 2)
+        y_offset = ((sample_size[0] - 1) // 2)
         x = tile_x - x_offset
         y = tile_y - y_offset
 
         # Bound sample to include at most 1 tile thick outside-grid wall tiles.
-        max_sample_x = len(self.grid[0]) - sample_size[0] + 1
-        max_sample_y = len(self.grid) - sample_size[1] + 1
+        max_sample_x = len(self.grid[0]) - sample_size[1] + 1
+        max_sample_y = len(self.grid) - sample_size[0] + 1
         x = min(max(x, -1), max_sample_x)
         y = min(max(y, -1), max_sample_y)
 
@@ -176,7 +180,7 @@ class NoUnnecessaryGuessSolver(Agent):
     def getSampleAtPosition(self, pos, size, grid):
         self.sample_pos = pos
         (x, y) = pos
-        (columns, rows) = size
+        (rows, columns) = size
 
         # Calculate how many wall tiles to include (which can happen when part of sample lies
         # outside game grid).
