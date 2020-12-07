@@ -1,4 +1,5 @@
 import time
+from datetime import timedelta
 import os
 import csv
 
@@ -126,6 +127,11 @@ if __name__ == '__main__':
     num_combinations = len(parameter_grid)
     num_games = constant_parameters['NUM_GAMES']
     print("Running {} games ({} total) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations))
+    
+    start = time.time()
     runGames(parameter_grid, constant_parameters, OUTPUT_FILE_NAME)
-    print("\nFINISHED")
+    end = time.time()
+
+    duration = timedelta(seconds=round(end - start))
+    print(f"\nFinished in {duration} sec")
     
