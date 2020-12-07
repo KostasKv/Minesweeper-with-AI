@@ -1,24 +1,6 @@
-from Agent import Agent
 from random import randint
-from itertools import chain
 
-
-class RandomAgent(Agent):
-    def nextMove(self):
-        x = randint(0, len(self.grid[0]) - 1)
-        y = randint(0, len(self.grid) - 1)
-        return (x, y, False)
-
-    def update(self, grid, mines_left, game_state):
-        self.grid = grid
-        self.mines_left = mines_left
-        self.game_state = game_state
-
-    def onGameBegin(self):
-        pass
-    
-    def highlightTiles(self):
-        pass
+from .Agent import Agent
 
 class RandomLegalMovesAgent(Agent):
     def nextMove(self):
@@ -58,24 +40,5 @@ class RandomLegalMovesAgent(Agent):
     def onGameBegin(self):
         pass
 
-    def highlightTiles(self):
-        pass
-
-
-class PickFirstUncoveredAgent(Agent):
-    def nextMove(self):
-        for tile in self.tiles_not_checked:
-            if not tile.uncovered and not tile.is_mine:
-                return (tile.x, tile.y, False)
-
-    def update(self, grid, mines_left, game_state):
-        self.grid = grid
-        self.mines_left = mines_left
-        self.game_state = game_state
-
-    def onGameBegin(self):
-        # Flatten grid to a 1D list
-        self.tiles_not_checked = list(chain.from_iterable(self.grid))
-    
     def highlightTiles(self):
         pass

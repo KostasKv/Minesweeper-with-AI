@@ -1,10 +1,12 @@
-from Agent import Agent
-from Game import Game
 from random import Random
 from itertools import chain, combinations
 from iteration_utilities import deepflatten
 from copy import copy
-from cp_solver import CpSolver
+
+from .cp_solver import CpSolver
+
+from .agent import Agent
+from minesweeper_ai.game import Game
 
 
 class NoUnnecessaryGuessSolver(Agent):

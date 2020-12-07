@@ -1,7 +1,7 @@
-from Agent import Agent
-from Game import Game
 import random
 import time
+from minesweeper_ai.Game import Game
+from .Agent import Agent
 
 class Case:
     '''

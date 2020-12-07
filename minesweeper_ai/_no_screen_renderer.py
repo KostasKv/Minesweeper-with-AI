@@ -1,5 +1,5 @@
-from Renderer import Renderer
-from Game import Game
+from .renderer import Renderer
+from .game import Game
 
 class NoScreenRenderer(Renderer):
     def __init__(self, config, grid, agent):

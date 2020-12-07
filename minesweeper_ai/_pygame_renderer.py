@@ -1,9 +1,10 @@
-import pygame
 import os
 from enum import Enum
-from Game import Game
-from Renderer import Renderer
-import asyncio
+
+import pygame
+
+from .game import Game
+from .renderer import Renderer
 
 # Sprites is global as most classes in this module need access to it, and it
 # only needs to be loaded into memory once. Apart from loading in the sprites,

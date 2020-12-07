@@ -1,11 +1,15 @@
 import time
 import os
 import csv
+
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
-import Minesweeper
-from NoUnnecessaryGuessSolver import NoUnnecessaryGuessSolver
 
+from minesweeper_ai import minesweeper
+from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'data')
 
 def validateFileName(output_file_name):
     try:
@@ -16,16 +20,19 @@ def validateFileName(output_file_name):
 
 def saveResultsToCsv(results, file_name):
     ''' Results are saved in 'data' folder. '''
-    RESULTS_FOLDER_PATH = 'data\\'
-
+    
     validateFileName(file_name)
 
-    # Strip whitespace and file extension
+    # Strip whitespace and .csv extension
     file_name = file_name.strip()
-    file_name = file_name.rstrip('.csv')
 
-    path = RESULTS_FOLDER_PATH + file_name
-    
+    # Remove .csv extension
+    file_name_without_ext, ext = os.path.splitext(file_name)
+    if ext == '.csv':
+        file_name = file_name_without_ext
+
+    path = os.path.join(OUTPUT_DIR, file_name)
+
     # Don't overwrite existing data. Instead append a number to the filename.
     if os.path.exists(path + '.csv'):
         i = 1
@@ -79,7 +86,7 @@ def runGames(parameter_grid, CONSTANTS, output_file_name):
                                                 use_num_mines_constraint=parameters['use_num_mines_constraint'])
 
         # Play
-        results = Minesweeper.run(solver_agent,
+        results = minesweeper.run(solver_agent,
                                     config=parameters['config'],
                                     visualise=CONSTANTS['VISUALISE'],
                                     verbose=CONSTANTS['VERBOSE'],
@@ -99,10 +106,10 @@ def runGames(parameter_grid, CONSTANTS, output_file_name):
         
 
 if __name__ == '__main__':
-    OUTPUT_FILE_NAME = 'experiment-sample-count-500-games'
+    OUTPUT_FILE_NAME = 'experiment_1000_games'
 
     constant_parameters = {
-        'NUM_GAMES': 1,
+        'NUM_GAMES': 1000,
         'RUN_SEED': 57,
         'AGENT_SEED': 14,
         'VERBOSE': False,
