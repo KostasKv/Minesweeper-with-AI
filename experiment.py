@@ -104,10 +104,9 @@ def runGames(parameter_grid, CONSTANTS, output_file_name):
     # Save constant parameters too
     constants_output = output_file_name.rstrip('.csv') + "_constant-parameters"
     saveResultsToCsv([constant_parameters], constants_output)
-        
 
-if __name__ == '__main__':
-    OUTPUT_FILE_NAME = 'experiment_1000_games'
+def getExperimentOneParameters():
+    title = "experiment_1000_games"
 
     constant_parameters = {
         'NUM_GAMES': 1000,
@@ -122,14 +121,41 @@ if __name__ == '__main__':
         'use_num_mines_constraint': [True, False],
         'config': [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}],
     }
+
+    return (title, constant_parameters, variable_parameters)
+
+def getExperimentTwoParameters():
+    title = "experiment2"
+
+    constant_parameters = {
+        'NUM_GAMES': int(1e5),
+        'RUN_SEED': 50,
+        'AGENT_SEED': 20,
+        'VERBOSE': False,
+        'VISUALISE': False,
+    }
+
+    variable_parameters = {
+        'sample_size': [None],  # Sample size None means use full grid
+        'use_num_mines_constraint': [True],
+        'config': [{'rows': 9, 'columns': 9, 'num_mines': 10}],
+    }
+
+    return (title, constant_parameters, variable_parameters)
+
+if __name__ == '__main__':
+    # Get experiment
+    (output_file_name, constant_parameters, variable_parameters) = getExperimentTwoParameters()
     parameter_grid = list(ParameterGrid(variable_parameters))
 
+    # Print out start-of-experiment info
     num_combinations = len(parameter_grid)
     num_games = constant_parameters['NUM_GAMES']
     print("Running {} games ({} total) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations))
     
+    # Start experiment
     start = time.time()
-    runGames(parameter_grid, constant_parameters, OUTPUT_FILE_NAME)
+    runGames(parameter_grid, constant_parameters, output_file_name)
     end = time.time()
 
     duration = timedelta(seconds=round(end - start))
