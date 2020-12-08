@@ -1,6 +1,6 @@
 from random import randint
 
-from .Agent import Agent
+from .agent import Agent
 
 class RandomLegalMovesAgent(Agent):
     def nextMove(self):

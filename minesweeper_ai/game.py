@@ -1,8 +1,8 @@
-import random
+from random import Random
 from enum import Enum
 
 
-class Tile:
+class _Tile:
     def __init__(self, pos, is_mine=False):
         self.x = pos[0]
         self.y = pos[1]
@@ -12,15 +12,13 @@ class Tile:
         self.num_adjacent_mines = 0
 
 
-class Game:
-    def __init__(self, config, seed=None):
+class _Game:
+    def __init__(self, config):
         self.config = config
         self.raiseErrorOnInvalidConfig(config) # Abruptly stops if invalid.
-        random.seed(seed)
         self.state = None
         self.mines_left = None
-        self.reset()
-
+        self.seed = None
 
     @staticmethod
     def raiseErrorOnInvalidConfig(config):
@@ -49,14 +47,13 @@ class Game:
             message = template.format(config['num_mines'], max_mines, config['rows'], config['columns'], max_mines)
             raise ValueError(message)
         
-
-    def reset(self):
-        self.createNewEmptyHiddenGrid()
+    def newGame(self, seed):
+        self.seed = seed
         self.state = self.State.START
         self.mines_left = self.config['num_mines']
+        self._createNewEmptyHiddenGrid()
 
-
-    def createNewEmptyHiddenGrid(self):
+    def _createNewEmptyHiddenGrid(self):
         self.grid = []
 
         for y in range(self.config['rows']):
@@ -64,52 +61,53 @@ class Game:
 
             for x in range(self.config['columns']):
                 pos = (x, y)
-                tile = Tile(pos, is_mine=False)
+                tile = _Tile(pos, is_mine=False)
                 row.append(tile)
             
             self.grid.append(row)
 
+    def onFirstClick(self, excluded_tile_pos):
+        self._populateGrid(excluded_tile_pos, self.seed)
 
-    def populateGrid(self, excluded_tile_pos):
-        self.populateGridWithMines(excluded_tile_pos)
-        self.markGridSquaresWithMineProximityCount()
+    def _populateGrid(self, excluded_tile_pos, seed):
+        self._populateGridWithMines(excluded_tile_pos, seed)
+        self._markGridSquaresWithMineProximityCount()
 
-    '''
-        Using convention that max number of mines on a QxP grid is (Q-1)(P-1),
-        in accordance to custom ranking rules on http://www.minesweeper.info/custom.php
-        and Window's minesweeper implementation http://www.minesweeper.info/wiki/Windows_Minesweeper#Trivia
+    def _populateGridWithMines(self, excluded_tile_pos, seed):
+        ''' 
+            Excludes tile that was clicked on in first click by player. First click is always safe in minesweeper.
+            Game grid generated is based off of seed provided. Using the same seed will create the same grid.
 
-        Method assumes Game's configuration is valid.
+            Using convention that max number of mines on a QxP grid is (Q-1)(P-1),
+            in accordance to custom ranking rules on http://www.minesweeper.info/custom.php
+            and Window's minesweeper implementation http://www.minesweeper.info/wiki/Windows_Minesweeper#Trivia
+            
+            Method assumes Game's configuration is valid.'''
 
-        Excludes tile that was clicked on in first click by player. First click is always safe in minesweeper.
-    '''
-    def populateGridWithMines(self, excluded_tile_pos):
+        seeded_generator = Random(seed)
         for _ in range(self.config['num_mines']):
-            self.placeMineInRandomEmptySquare(excluded_tile_pos)   
+            self._placeMineInRandomEmptySquare(excluded_tile_pos, seeded_generator)   
 
-
-    def placeMineInRandomEmptySquare(self, excluded_tile_pos):
+    def _placeMineInRandomEmptySquare(self, excluded_tile_pos, seeded_generator):
         mine_placed = False
 
         # Keep trying random squares until an empty (non-mine) square is found
         while not mine_placed:
-            x = random.randrange(0, self.config['columns'])
-            y = random.randrange(0, self.config['rows'])
+            x = seeded_generator.randrange(0, self.config['columns'])
+            y = seeded_generator.randrange(0, self.config['rows'])
 
             if (x, y) != excluded_tile_pos and not self.grid[y][x].is_mine:
                 self.grid[y][x].is_mine = True
                 mine_placed = True
 
-
-    def markGridSquaresWithMineProximityCount(self):
+    def _markGridSquaresWithMineProximityCount(self):
         for x in range(self.config['columns']):
             for y in range(self.config['rows']):
-                self.grid[y][x].num_adjacent_mines = self.countAdjacentMines(x, y)
+                self.grid[y][x].num_adjacent_mines = self._countAdjacentMines(x, y)
 
-
-    def countAdjacentMines(self, x, y):
+    def _countAdjacentMines(self, x, y):
         adjacent_mines_count = 0
-        adjacent_tiles_coords = self.getAdjacentTilesCoords(x, y)
+        adjacent_tiles_coords = self.get_adjacent_tile_coords(x, y)
 
         for coords in adjacent_tiles_coords:
             x, y = coords
@@ -120,8 +118,7 @@ class Game:
 
         return adjacent_mines_count
 
-
-    def getAdjacentTilesCoords(self, x, y, exclude_diagonals=False):
+    def get_adjacent_tile_coords(self, x, y, exclude_diagonals=False):
         max_x = self.config['columns'] - 1
         max_y = self.config['rows'] - 1
 

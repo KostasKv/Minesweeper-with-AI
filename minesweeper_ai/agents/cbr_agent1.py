@@ -1,7 +1,7 @@
 import random
 import time
-from minesweeper_ai.Game import Game
-from .Agent import Agent
+from minesweeper_ai.game import _Game
+from .agent import Agent
 
 class Case:
     '''
@@ -28,7 +28,7 @@ class CBRAgent1(Agent):
 
 
     def nextMove(self):
-        if self.game_state == Game.State.START:
+        if self.game_state == _Game.State.START:
             # First click of a game is random
             action = self.getRandomLegalClickAction()
         else:
@@ -157,7 +157,7 @@ class CBRAgent1(Agent):
         self.game_state = game_state
 
         if self.prev_case_with_mine_clicked:
-            choice_was_correct = self.game_state in [Game.State.PLAY, Game.State.WIN]
+            choice_was_correct = self.game_state in [_Game.State.PLAY, _Game.State.WIN]
             self.reviseCase(self.prev_case_with_mine_clicked, choice_was_correct)
 
             self.prev_case_with_mine_clicked = None

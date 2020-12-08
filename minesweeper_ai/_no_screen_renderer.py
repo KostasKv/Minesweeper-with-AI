@@ -1,12 +1,12 @@
 from .renderer import Renderer
-from .game import Game
+from .game import _Game
 
 class NoScreenRenderer(Renderer):
     def __init__(self, config, grid, agent):
         self.config = config
         self.grid = grid
         self.agent = agent
-        self.game_state = Game.State.START
+        self.game_state = _Game.State.START
         
         self.initialiseAgent()
 
@@ -17,7 +17,7 @@ class NoScreenRenderer(Renderer):
 
 
     def getNextMove(self):
-        if self.game_state in [Game.State.PLAY, Game.State.START]:
+        if self.game_state in [_Game.State.PLAY, _Game.State.START]:
             return self.agent.nextMove()
         else:
             return -1     # End of game so signal for game reset
@@ -27,7 +27,7 @@ class NoScreenRenderer(Renderer):
         self.game_state = result[2]
         self.agent.update(*result)
 
-        if self.game_state == Game.State.START:
+        if self.game_state == _Game.State.START:
             self.agent.onGameBegin()
 
 

@@ -1,7 +1,7 @@
 from itertools import chain
 from random import randint
 
-from .Agent import Agent
+from .agent import Agent
 
 
 class PickFirstUncoveredAgent(Agent):

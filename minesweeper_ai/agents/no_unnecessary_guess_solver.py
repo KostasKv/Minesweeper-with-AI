@@ -6,28 +6,35 @@ from copy import copy
 from .cp_solver import CpSolver
 
 from .agent import Agent
-from minesweeper_ai.game import Game
+from minesweeper_ai.game import _Game
 
 
 class NoUnnecessaryGuessSolver(Agent):
-    def __init__(self, sample_size=(5,5), seed=0, use_num_mines_constraint=True):
+    def __init__(self, sample_size=(5,5), use_num_mines_constraint=True, first_click_pos=None, seed=0):
         self.SAMPLE_SIZE = sample_size
-        self.seed = seed
         self.use_num_mines_constraint = use_num_mines_constraint
+        self.first_click_pos = first_click_pos
+        self.seed = seed
+
         self.random = Random(seed)  # This might need changing before experimenting. (agent always picks same first tile between games. Not so random)
         self.samples_considered_already = set()
         self.sample_pos = None
         self.sure_moves_not_played_yet = set()
         self.cp_solver = CpSolver()
         self.renderer = None
+
         self.sample_count = 0
         self.samples_with_solution_count = 0
+        self.had_to_guess_this_game = False
+        self.last_move_was_sure_move = None
 
     def nextMove(self):
-        if self.game_state == Game.State.START:
-            move = self.clickRandom()
+        if self.game_state == _Game.State.START:
+            move = self.getFirstMove()
+            self.last_move_was_sure_move = False
         elif self.sure_moves_not_played_yet:
             move = self.sure_moves_not_played_yet.pop()
+            self.last_move_was_sure_move = True
         else:
             sure_moves = self.lookForSureMovesFromGridSamplesFocussedOnGridSamples(self.SAMPLE_SIZE)
 
@@ -39,10 +46,19 @@ class NoUnnecessaryGuessSolver(Agent):
                 move = sure_moves.pop()
                 self.sure_moves_not_played_yet.update(sure_moves)
                 self.samples_with_solution_count += 1
+                self.last_move_was_sure_move = True
             else:
                 move = self.clickRandom()
+                self.had_to_guess_this_game = True
+                self.last_move_was_sure_move = False
         
         return move
+
+    def getFirstMove(self):
+        if self.first_click_pos is None:
+            return self.clickRandom()
+        else:
+            return (*self.first_click_pos, True)
 
     # The method distinction between this and the one below helps with performance profiling since
     # program run time is then split in two between these two, rather than being stuck together under one
@@ -58,7 +74,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         for (sample, sample_pos) in samples:
             sample_hash = self.getSampleHash(sample, sample_pos)
-            # self.highlightSample(sample)
+            self.highlightSample(sample)
             
             if sample_hash not in self.samples_considered_already:
                 self.samples_considered_already.add(sample_hash)
@@ -67,7 +83,7 @@ class NoUnnecessaryGuessSolver(Agent):
                 if sure_moves:
                     return sure_moves
             
-            # self.removeAllSampleHighlights(sample)
+            self.removeAllSampleHighlights(sample)
         
         # No sure moves found
         return set()
@@ -148,30 +164,31 @@ class NoUnnecessaryGuessSolver(Agent):
     def getAllSamplePosOfSamplesWhichCouldGiveSolutions(self, size):
         ''' Returns all sample top-left pos (x, y) where the sample contains atleast one
             uncovered tile and one covered (non-flagged) tile. '''
+        (sample_rows, sample_cols) = size
         min_x = -1
         min_y = -1
-        max_x = len(self.grid[0]) - size[0] + 1
-        max_y = len(self.grid) - size[1] + 1
+        max_x = len(self.grid[0]) - sample_cols + 1
+        max_y = len(self.grid) - sample_rows + 1
 
         for y in range(min_y, max_y + 1):
             for x in range(min_x, max_x + 1):
-                if self.existsCoveredAndUncoveredTileInOrJustOutsideSample((x, y), size):
+                if self.existsCoveredAndUncoveredTileInOrJustOutsideSample((x, y), sample_rows, sample_cols):
                     yield (x, y)
 
-    def existsCoveredAndUncoveredTileInOrJustOutsideSample(self, pos, size):
+    def existsCoveredAndUncoveredTileInOrJustOutsideSample(self, pos, sample_rows, sample_cols):
         exists_covered = False
         exists_uncovered = False
 
-        for x in range(pos[0] - 1, pos[0] + size[0] + 1):
-            for y in range(pos[1] - 1, pos[1] + size[1] + 1):
-                # Out of bounds
+        for x in range(pos[0] - 1, pos[0] + sample_cols + 1):
+            for y in range(pos[1] - 1, pos[1] + sample_rows + 1):
+                # Out of grid bounds
                 if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
                     continue
                 
                 if self.grid[y][x].uncovered:
                     exists_uncovered = True
                 elif not self.grid[y][x].is_flagged:
-                    exists_uncovered = True
+                    exists_covered = True
 
                 if exists_covered and exists_uncovered:
                     return True
@@ -499,6 +516,9 @@ class NoUnnecessaryGuessSolver(Agent):
         return False
 
     def update(self, grid, mines_left, game_state):
+        if game_state in [_Game.State.LOSE, _Game.State.ILLEGAL_MOVE] and self.last_move_was_sure_move:
+            raise AssertionError("Sure move lost a game!")
+
         # Removes coordinates from every tile. A sample's coordinates will be inferred
         # from the element's position in the sample.
         converted_grid = [[SampleTile(tile) for tile in row] for row in grid]
@@ -509,6 +529,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         # Last played move could have uncovered multiple tiles, making some sure moves now illegal moves.
         self.sure_moves_not_played_yet = self.pruneIllegalSureMoves(self.sure_moves_not_played_yet)
+        self.last_move_was_sure_move = None
 
     def pruneIllegalSureMoves(self, sure_moves):
         ''' Gets rid of sure moves that cannot actually be played. '''
@@ -528,6 +549,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.random = Random(self.seed)
         self.sure_moves_not_played_yet = set()
         self.samples_considered_already = set()
+        self.had_to_guess_this_game = False
 
     @staticmethod
     def disjointSectionsToHighlights(sections):

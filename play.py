@@ -1,19 +1,26 @@
-from MinesweeperAI import Minesweeper, Agents
+import time
+import cProfile
+
+from minesweeper_ai import minesweeper
+from minesweeper_ai.agents.random_agent import RandomAgent
+from minesweeper_ai.agents.random_legal_moves_agent import RandomLegalMovesAgent
+from minesweeper_ai.agents.pick_first_uncovered_agent import PickFirstUncoveredAgent
+from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
+from minesweeper_ai.agents.cbr_agent1 import CBRAgent1
 
 if __name__ == '__main__':
     # Constants (configurables)
     profile = False
-    benchmark = False
-    
+    benchmark = True
     num_games_profile = 10
     num_games_benchmark = 10
     num_games_other = 2
-    config = {'rows': 16, 'columns': 30, 'num_mines': 99}
+    config = {'rows': 16, 'columns': 16, 'num_mines': 40}
     run_seed = 57
     agent_seed = 14
     
     # Solvers
-    random_agent = Agents.RandomAgent()
+    random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
     solver_agent = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=(10, 10), use_num_mines_constraint=False)
@@ -30,9 +37,12 @@ if __name__ == '__main__':
     if benchmark:
         # sample_sizes = [(32, 18)]
         # u = [True]
-        sample_sizes = [(4, 4), (5, 5), (6, 6), (32, 18)]
-        u = [True, False]
-        configs = [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}]
+        # sample_sizes = [(4, 4), (5, 5), (6, 6), (32, 18)]
+        # u = [True, False]
+        # configs = [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}]
+        sample_sizes = [(18, 18)]
+        configs = [{'rows': 16, 'columns': 16, 'num_mines': 40}]
+        u = [True]
         combinations = len(sample_sizes) * len(u) * len(configs)
         print("Benchmarking. Running {} games total, spread over {} different configurations...".format(num_games_benchmark * combinations, combinations))
         
@@ -44,7 +54,7 @@ if __name__ == '__main__':
                     print("Sample size: {}\tuse_num_mines_constraint: {}, config: {}".format(sample_size, use_num_mines_constraint, config))
                     solver_agent = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=use_num_mines_constraint)
                     start = time.time()
-                    result = run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games_benchmark, seed=run_seed)
+                    result = minesweeper.run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games_benchmark, seed=run_seed)
                     end = time.time()
                     results.append(result)
                     print("Time taken: {}s\n".format(end - start))
@@ -52,7 +62,7 @@ if __name__ == '__main__':
         # run(verbose=0, config=config, seed=57, visualise=True)
         # run(random_agent, config=config, verbose=True, visualise=True)
         # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
-        results = run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games_other, seed=run_seed)
+        results = minesweeper.run(solver_agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
 
     print(results)

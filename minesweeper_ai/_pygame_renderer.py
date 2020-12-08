@@ -3,7 +3,7 @@ from enum import Enum
 
 import pygame
 
-from .game import Game
+from .game import _Game
 from .renderer import Renderer
 
 # Sprites is global as most classes in this module need access to it, and it
@@ -20,7 +20,7 @@ class PygameRenderer(Renderer):
         # First game's starting conditions
         self.grid = grid
         self.mines_left = self.game_config['num_mines']
-        self.game_state = Game.State.START
+        self.game_state = _Game.State.START
 
         self.things_to_draw = []
         self.tile_sprites = None
@@ -200,7 +200,7 @@ class PygameRenderer(Renderer):
         self.illegal_move_tint.kill()
 
     def update(self):
-        if not self.agent_next_move and self.agent and self.game_state in [Game.State.PLAY, Game.State.START]:
+        if not self.agent_next_move and self.agent and self.game_state in [_Game.State.PLAY, _Game.State.START]:
             self.agent_next_move = self.getNextMoveFromAgentAndMarkTiles()
 
     def handleEvents(self):
@@ -222,7 +222,7 @@ class PygameRenderer(Renderer):
         return action
 
     def playNextMove(self):
-        if self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]:
+        if self.game_state in [_Game.State.WIN, _Game.State.LOSE, _Game.State.ILLEGAL_MOVE]:
             # Game ended so update screen and then send a game reset action.
             self.onGameRestart()
             action = self.ACTION_RESET_GAME
@@ -246,7 +246,7 @@ class PygameRenderer(Renderer):
 
     def onGridClick(self, event, tile_sprite):
         # Ignore click if AI is playing, or if in an end-game state 
-        if self.agent or (self.game_state in [Game.State.WIN, Game.State.LOSE, Game.State.ILLEGAL_MOVE]):
+        if self.agent or (self.game_state in [_Game.State.WIN, _Game.State.LOSE, _Game.State.ILLEGAL_MOVE]):
             return None
 
         # Clicking an uncovered tile is an illegal move. Ignore it.
@@ -260,7 +260,7 @@ class PygameRenderer(Renderer):
             return None
 
         # Start clock event on first tile uncovering
-        if self.game_state == Game.State.START and not toggle_flag:
+        if self.game_state == _Game.State.START and not toggle_flag:
             pygame.time.set_timer(self.CLOCK_TICK_EVENT, self.ONE_SECOND) 
 
         return (tile_sprite.x, tile_sprite.y, toggle_flag)
@@ -352,15 +352,15 @@ class PygameRenderer(Renderer):
         if self.agent:
             self.agent.update(self.grid, self.mines_left, self.game_state)
 
-            if self.game_state == Game.State.START:
+            if self.game_state == _Game.State.START:
                 self.agent.onGameBegin()
         
-        if self.game_state in [Game.State.LOSE, Game.State.WIN, Game.State.ILLEGAL_MOVE]:
+        if self.game_state in [_Game.State.LOSE, _Game.State.WIN, _Game.State.ILLEGAL_MOVE]:
             pygame.time.set_timer(self.CLOCK_TICK_EVENT, self.NO_TIMER)    # Stop the clock by disabling timer event
 
-            if self.game_state == Game.State.LOSE:
+            if self.game_state == _Game.State.LOSE:
                 self.onGameLoss()
-            elif self.game_state == Game.State.ILLEGAL_MOVE:
+            elif self.game_state == _Game.State.ILLEGAL_MOVE:
                 self.onIllegalMove()
         
         # Remove highlights from tile as turn has finished.
@@ -389,7 +389,7 @@ class PygameRenderer(Renderer):
         
     
     def resetGame(self):
-        if self.game_state in [Game.State.START, Game.State.PLAY]:
+        if self.game_state in [_Game.State.START, _Game.State.PLAY]:
             result = self.executor.forceResetGame()
         else:
             # Trigger start of new game
@@ -486,9 +486,9 @@ class EmoteButton(pygame.sprite.Sprite):
         self.holdable = True
 
     def getSprite(self, game_state):
-        if game_state in [Game.State.PLAY, Game.State.START]:
+        if game_state in [_Game.State.PLAY, _Game.State.START]:
             sprite = sprites['emote_smile']
-        elif game_state == Game.State.WIN:
+        elif game_state == _Game.State.WIN:
             sprite = sprites['emote_cool']
         else:
             sprite = sprites['emote_dead']
@@ -546,10 +546,10 @@ class TileSprite(pygame.sprite.Sprite):
                 sprite = sprites['tile_covered']
 
         # End of game. Override with appropriate sprite if necessary.
-        if game_state == Game.State.WIN:
+        if game_state == _Game.State.WIN:
             if tile.is_mine:
                 sprite = sprites['tile_flag']
-        elif game_state == Game.State.LOSE:
+        elif game_state == _Game.State.LOSE:
             if tile.is_mine:
                 sprite = sprites['tile_mine']
             elif tile.is_flagged:
@@ -563,7 +563,7 @@ class TileSprite(pygame.sprite.Sprite):
         self.real_image = self.image
 
     def isHoldable(self, tile, game_state, is_agent):
-        return not is_agent and not tile.uncovered and not tile.is_flagged and game_state in [Game.State.PLAY, Game.State.START]
+        return not is_agent and not tile.uncovered and not tile.is_flagged and game_state in [_Game.State.PLAY, _Game.State.START]
 
     def updateBeingHeld(self, being_held, game_state):
         if being_held and self.holdable:
