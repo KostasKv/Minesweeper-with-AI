@@ -3,7 +3,7 @@ from copy import deepcopy
 
 class CpSolver():
     def searchForDefiniteSolutions(self, adjacent_mines_constraints, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=None):
-        if total_mines_left and num_tiles_outside_sample and frontier_tile_is_inside_sample:
+        if total_mines_left is not None and num_tiles_outside_sample is not None and frontier_tile_is_inside_sample is not None:
             num_frontier = len(frontier_tile_is_inside_sample)
             (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
         elif adjacent_mines_constraints:
@@ -65,6 +65,7 @@ class CpSolver():
 
         # Create total mines constraint
         min_mines = total_mines_left - num_tiles_outside_sample + len(v_outside)
+        min_mines = max(0, min_mines)   # Min mines can't be below 0
 
         if outside_flagged is None:
             model.Add(min_mines - sum(v_outside) <= sum(v_inside) <= total_mines_left)

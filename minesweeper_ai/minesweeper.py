@@ -47,13 +47,17 @@ def playGames(executor, renderer, verbose):
     return stats
 
 
-def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10, visualise=True, verbose=1, seed=None):
+def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10, visualise=True, verbose=1, seed=None, game_seeds=None):
     # If user is going to manually play, then they have to see the board.
     if not agent:
         visualise = True
 
     game = _Game(config)
-    executor = _Executor(game, num_games, seed=seed)
+
+    if game_seeds:
+        executor = _Executor(game, game_seeds=game_seeds)
+    else:
+        executor = _Executor(game, num_games, seed=seed)
 
     if visualise:
         renderer = PygameRenderer(config, game.grid, agent)

@@ -9,13 +9,14 @@ class _Executor():
             raise ValueError("Both num games and game seeds provided. Only one expected.")
 
         if num_games:
+            self._new_games_left = num_games
             self.game_seeds = self._get_game_seeds(num_games, seed)
         else:
+            self._new_games_left = len(game_seeds)
             self.game_seeds = iter(game_seeds)
 
         self.num_games = num_games
-        self._game = game
-        self._new_games_left = num_games
+        self._game = game        
         self._start_new_game()
         self._all_games_finished = False
 
@@ -28,6 +29,7 @@ class _Executor():
 
     def _start_new_game(self):
         next_seed = next(self.game_seeds)
+        self.current_game_seed = next_seed
         self._game.newGame(next_seed)
         self._new_games_left -= 1
 
