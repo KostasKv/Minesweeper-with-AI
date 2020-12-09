@@ -3,7 +3,7 @@ from enum import Enum
 
 import pygame
 
-from .game import _Game
+from ._game import _Game
 from .renderer import Renderer
 
 # Sprites is global as most classes in this module need access to it, and it

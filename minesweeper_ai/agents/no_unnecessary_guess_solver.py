@@ -6,7 +6,7 @@ from copy import copy
 from .cp_solver import CpSolver
 
 from .agent import Agent
-from minesweeper_ai.game import _Game
+from minesweeper_ai._game import _Game
 
 
 class NoUnnecessaryGuessSolver(Agent):
@@ -88,23 +88,6 @@ class NoUnnecessaryGuessSolver(Agent):
         # No sure moves found
         return set()
     
-    def getAllSureMovesFromSample(self, sample, sample_pos):
-        self.sample_count += 1
-        # self.highlightSample(sample)
-
-        if self.use_num_mines_constraint:
-            sure_moves = self.bruteForceWithAllConstraints(sample)
-        else:
-            sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample)
-
-        # self.removeAllSampleHighlights(sample)
-
-        if sure_moves:
-            sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
-            sure_moves = self.pruneIllegalSureMoves(sure_moves)
-
-        return sure_moves
-
     def getUsefulSampleAreasFromGrid(self, size, limit_search_to_frontier=False):
         # Note that these sample positions will include the outside grid wall (1 tile thick at most)
         # in the samples. Knowing a sample is beside a wall is useful info and can lead to sure moves.
@@ -234,34 +217,24 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return hash((simpler_sample, sample_pos))
 
-    @staticmethod
-    def getAdjacentTilesInSample(tile_sample_coords, sample):
-        max_x = len(sample[0]) - 1
-        max_y = len(sample) - 1
+    def getAllSureMovesFromSample(self, sample, sample_pos):
+        self.sample_count += 1
+        # self.highlightSample(sample)
 
-        (x, y) = tile_sample_coords
-        adjacents = []
+        # sps_sure_moves = self.singlePointStrategy(sample)
 
-        for i in [-1, 0, 1]:
-            new_x = x + i
-            
-            if new_x < 0 or new_x > max_x:
-                continue
+        if self.use_num_mines_constraint:
+            sure_moves = self.bruteForceWithAllConstraints(sample)
+        else:
+            sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample)
 
-            for j in [-1, 0, 1]:
-                new_y = y + j
+        # self.removeAllSampleHighlights(sample)
 
-                if new_y < 0 or new_y > max_y:
-                    continue
+        if sure_moves:
+            sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
+            sure_moves = self.pruneIllegalSureMoves(sure_moves)
 
-                # We want adjacent tiles, not the tile itself
-                if new_x == x and new_y == y:
-                    continue
-
-                adjacent = sample[new_y][new_x]
-                adjacents.append(adjacent)
-
-        return adjacents
+        return sure_moves
 
     def bruteForceWithAllConstraints(self, sample):
         disjoint_sections = self.getDisjointSections(sample)

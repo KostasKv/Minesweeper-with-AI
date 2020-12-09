@@ -1,7 +1,7 @@
 import time
 import cProfile
 
-from .game import _Game
+from ._game import _Game
 from._executor import _Executor
 from ._pygame_renderer import PygameRenderer
 from ._no_screen_renderer import NoScreenRenderer

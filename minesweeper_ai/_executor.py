@@ -1,5 +1,5 @@
 from random import Random
-from .game import _Game
+from ._game import _Game
 
 class _Executor():
     def __init__(self, game, num_games=None, game_seeds=None, seed=None):
