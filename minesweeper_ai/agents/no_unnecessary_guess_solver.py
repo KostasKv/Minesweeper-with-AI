@@ -219,26 +219,186 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
-        # self.highlightSample(sample)
+        self.highlightSample(sample)
 
-        # sps_sure_moves = self.singlePointStrategy(sample)
+        sps_sure_moves = self.singlePointStrategy(sample)
+        h = self.sureMovesToHighlights(sps_sure_moves)
+        self.cheekyHighlight(h)
+
+        disjoint_sections = self.getDisjointSections(sample, sps_sure_moves)
+        
+        d = self.disjointSectionsToHighlights(disjoint_sections)
+        self.cheekyHighlight(d)
 
         if self.use_num_mines_constraint:
-            sure_moves = self.bruteForceWithAllConstraints(sample)
+            brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections)
         else:
-            sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample)
+            brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections)
+        
+        f = self.sureMovesToHighlights(brute_sure_moves)
+        self.cheekyHighlight(f)
+        self.removeHighlight(d)
+        self.removeHighlight(h)
+        self.removeHighlight(f)
 
-        # self.removeAllSampleHighlights(sample)
+        sure_moves = sps_sure_moves | brute_sure_moves
+
+        self.removeAllSampleHighlights(sample)
 
         if sure_moves:
             sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
             sure_moves = self.pruneIllegalSureMoves(sure_moves)
 
-        return sure_moves
+        return brute_sure_moves
 
-    def bruteForceWithAllConstraints(self, sample):
-        disjoint_sections = self.getDisjointSections(sample)
+    def singlePointStrategy(self, sample):
+        adjacent_info = list(self.getTilesAndAdjacentsOfInterestForSPS(sample))
+        # tiles_and_adjacents_of_interest = [] 
+        # for (x, y) in uncovered_tiles_in_sample:
+        #     ((x, y), sample[y][x].num_adjacent_mines, self.getAdjacentCoveredTiles(sample, x, y)) 
+        all_sure_mines = set()
+        all_sure_safe = set()
 
+        moves_found = True
+
+        # Sure moves found after an iteration can lead to the discovery of new sure moves in the same sample.
+        # Therefore, SPS should be repeated a bunch until it can no longer find any more sure moves in the sample.
+        while moves_found:
+            moves_found = False
+
+            for i in range(len(adjacent_info) - 1, -1, -1):
+                (num_adjacent_unknown_mines, adjacent_unknown) = adjacent_info[i]
+                sure_mines = set()
+                sure_safe = set()
+                
+                adjacent_unknown -= all_sure_safe
+                unknown_discovered_to_be_mines = (adjacent_unknown & all_sure_mines)
+
+                if unknown_discovered_to_be_mines:
+                    num_adjacent_unknown_mines -= len(unknown_discovered_to_be_mines)
+                    adjacent_unknown -= unknown_discovered_to_be_mines
+
+                if num_adjacent_unknown_mines == 0:
+                    sure_safe.update(adjacent_unknown)
+                elif num_adjacent_unknown_mines == len(adjacent_unknown):
+                    sure_mines.update(adjacent_unknown)
+
+                if sure_mines or sure_safe:
+                    moves_found = True
+                    all_sure_mines.update(sure_mines)
+                    all_sure_safe.update(sure_safe)
+
+                    # Once sure moves are found around a tile, it can't give us any more sure moves.
+                    adjacent_info.pop(i)
+                else:
+                    # Update info
+                    adjacent_info[i] = (num_adjacent_unknown_mines, adjacent_unknown)
+            
+            h = self.sureMovesToHighlights({(x, y, True) for (x, y) in all_sure_mines} | {(x, y, False) for (x, y) in all_sure_safe})
+
+            self.cheekyHighlight(h)
+            self.removeHighlight(h)
+            
+        return {(x, y, True) for (x, y) in all_sure_mines} | {(x, y, False) for (x, y) in all_sure_safe}
+
+    def getTilesAndAdjacentsOfInterestForSPS(self, sample):
+        interest = []
+
+        for (y, row) in enumerate(sample):
+            for (x, tile) in enumerate(row):
+                if not tile or not tile.uncovered or tile.num_adjacent_mines < 1:
+                    continue
+
+                num_adjacent_unknown_mines = tile.num_adjacent_mines
+                adjacent_coords = iter((x + i, y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0))
+                
+                adjacent_unknown = set()
+
+                for (adj_x, adj_y) in adjacent_coords:
+                    # Tiles outside sample are assumed to be covered unknown tiles
+                    if adj_x < 0 or adj_y < 0 or adj_x >= len(sample[0]) or adj_y >= len(sample):
+                        adjacent_unknown.add((adj_x, adj_y))
+                        continue
+                    
+                    if sample[adj_y][adj_x] is None or sample[adj_y][adj_x].uncovered:
+                        continue
+
+                    if sample[adj_y][adj_x].is_flagged:
+                        num_adjacent_unknown_mines -= 1
+                    else:
+                        adjacent_unknown.add((adj_x, adj_y))
+
+                # Can't discover moves with SPS if there are no unknown tiles around the uncovered tile
+                if not adjacent_unknown:
+                    continue
+                
+                yield (num_adjacent_unknown_mines, adjacent_unknown)
+
+                        
+    # @staticmethod
+    # def getAdjacentCoveredTiles(sample, tile_x, tile_y):
+    #     adjacent_coords = [(tile_x + i, tile_y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
+    #     adjacent_tiles = [sample[y][x] for (x, y) in adjacent_coords if x < 0 if sample[adj_x] is not None]
+    #     return [tile for tile in adjacent_tiles if not tile.uncovered]
+
+    # def singlePointStrategyOnTileAndAdjacentCovered(self, tile, num_adjacent_mines, adjacent_unknown):
+    #     num_covered = 0
+    #     num_known_adj_mines = 0
+    #     unknown_adjacent = []
+
+    #     if len(adjacent_unknown) > 0:
+    #         # self.cheekyHighlight(tile, 4)
+    #         # self.cheekyHighlight(adjacent_covered_tiles, 1)
+
+
+    #         else:
+    #             sure_moves = {}
+
+    #     return sure_moves
+    #         # self.removeHighlight(tile, 4)
+    #         # self.removeHighlight(adjacent_covered_tiles, 1)
+
+    #     # # DEBUG
+    #     # for (x, y, is_mine) in sure_moves_found:
+    #     #     if is_mine:
+    #     #         code = 12
+    #     #     else:
+    #     #         code = 11
+
+    #     #     self.removeHighlight((x, y), code)
+
+    #     return sure_moves
+
+    # def formIntoSureMovesAndUpdateTilesWithSolution(self, adjacent_covered_tiles, is_mine=True):
+    #     sure_moves = set()
+
+    #     for tile in adjacent_covered_tiles:
+    #         move = (tile.x, tile.y, is_mine)
+    #         sure_moves.add(move)
+
+    #         # Mark solution on sample's tile itself
+    #         if isinstance(tile, SampleOutsideTile):
+    #             tile.setIsMine(is_mine)
+    #         else:
+    #             tile.is_flagged = is_mine
+
+    #         # DEBUG
+    #         if is_mine:
+    #             code = 12
+    #         else:
+    #             code = 11
+    #         self.cheekyHighlight(tile, code)
+
+    #     return sure_moves
+
+
+    # def updateSampleWithSureMoves(sample, sure_moves_found):
+    #     for (x, y, is_mine) in sure_moves_found:
+    #         sample[y][x].setIsMine(is_mine)
+
+    #     return sample
+
+    def bruteForceWithAllConstraints(self, sample, disjoint_sections):
         # It's faster (and much simpler) to bruteforce one merged section if including total mines left constraint.
         all_sections_as_one = self.mergeSections(disjoint_sections)
 
@@ -250,9 +410,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return self.bruteForceSection(sample, all_sections_as_one, frontier_tile_is_inside_sample, self.mines_left, num_tiles_outside_sample)
 
-    def bruteForceWithJustAdacentMinesConstraints(self, sample):
-        disjoint_sections = self.getDisjointSections(sample)
-
+    def bruteForceWithJustAdacentMinesConstraints(self, sample, disjoint_sections):
         all_sure_moves = set()
 
         # h = self.disjointSectionsToHighlights(disjoint_sections)
@@ -281,7 +439,6 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, self.mines_left, num_tiles_outside_sample)
 
-
     def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left=None, num_tiles_outside_sample=None):
         definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
@@ -294,38 +451,52 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return sure_moves
                 
-    def getDisjointSections(self, sample):
+    def getDisjointSections(self, sample, discovered_sure_moves):
         disjoint_sections = []
+        f = self.sureMovesToHighlights(discovered_sure_moves)
+        self.cheekyHighlight(f)
 
         for (y, row) in enumerate(sample):
             for (x, tile) in enumerate(row):
                 # Only consider uncovered tiles with a number larger than 0, as those are the only
                 # ones from which useful constraints can be made (and whether or not those constraints are disjoint
                 # determines whether or not the sections are disjoint).
-                if not tile or not tile.uncovered or tile.num_adjacent_mines == 0:
+                if not tile or not tile.uncovered or tile.num_adjacent_mines < 1:
                     continue
+                self.cheekyHighlight((x, y), 4)
                 
-                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines)
-
+                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines, discovered_sure_moves)
+                h = self.disjointSectionsToHighlights(disjoint_sections)
+                self.cheekyHighlight(h)
+                self.removeHighlight((x, y), 4)
+                self.removeHighlight(h)
+        self.removeHighlight(f)
         return disjoint_sections
 
-    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines):
-        adjacent_section = self.getAdjacentSectionForUncoveredSampleTile(sample, tile_coords, num_adjacent_mines)
-        (outside_frontier, inside_frontier) = adjacent_section[:2]
+    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines, discovered_sure_moves):
+        adjacent_section = self.getAdjacentSectionForUncoveredSampleTile(sample, tile_coords, num_adjacent_mines, discovered_sure_moves)
+        frontier = adjacent_section[0]
            
         # Can only merge or find new sections based on frontier tiles in the adjacent section
-        if outside_frontier or inside_frontier:
+        if frontier:
             disjoint_sections = self.updateDisjointSectionBasedOnAdjacentSection(disjoint_sections, adjacent_section)
 
         return disjoint_sections
 
-    def getAdjacentSectionForUncoveredSampleTile(self, sample, tile_coords, num_adjacent_mines):
+    def getAdjacentSectionForUncoveredSampleTile(self, sample, tile_coords, num_adjacent_mines, discovered_sure_moves):
         adjacent_coords = [(tile_coords[0] + i, tile_coords[1] + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
         mines_left_around_tile = num_adjacent_mines
         frontier = set()
 
         while adjacent_coords:
             (x, y) = adjacent_coords.pop()
+
+            # Update info based on moves discovered by previous strategies.
+            if (x, y, False) in discovered_sure_moves:
+                continue
+            if (x, y, True) in discovered_sure_moves:
+                mines_left_around_tile -= 1
+                continue
             
             # Outside tile is assumed to be covered, therefore this adjacent tile
             # is considered a frontier tile.
@@ -532,7 +703,7 @@ class NoUnnecessaryGuessSolver(Agent):
             each highlight in the cycle once per disjoint section.
         '''
         START_HIGHLIGHT_NUM = 7
-        END_HIGHLIGHT_NUM = 12
+        END_HIGHLIGHT_NUM = 10
         
         highlights = []
 
@@ -604,13 +775,13 @@ class NoUnnecessaryGuessSolver(Agent):
             tile_coords = self.transformCoords(tile_coords, transform=transform)
 
             # Remove coordinates that end up out of bounds after transformation
-            for (i, (x, y)) in enumerate(tile_coords[::-1]):
-                inside_grid_bounds = (x >= 0 and y >= 0 and x < len(self.grid[0]) and y < len(self.grid))
+            for i in range(len(tile_coords) -1, -1, -1):
+                (x, y) = tile_coords[i]
+                outside_grid_bounds = (x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid))
 
-                if not inside_grid_bounds:
-                    index = len(tile_coords) - 1 - i
-                    tile_coords.pop(index)
-                    codes.pop(index)
+                if outside_grid_bounds:
+                    tile_coords.pop(i)
+                    codes.pop(i)
     
         return list(zip(tile_coords, codes))
 
@@ -672,13 +843,9 @@ class NoUnnecessaryGuessSolver(Agent):
 class SampleTile():
     def __init__(self, tile):
         self.uncovered = tile.uncovered
-        self.is_flagged = tile.is_flagged
-        self.num_adjacent_mines = tile.num_adjacent_mines
 
-class SampleTile2():
-    def __init__(self, tile, coords):
-        self.x = coords[0]
-        self.y = coords[1]
-        self.uncovered = tile.uncovered
-        self.is_flagged = tile.is_flagged
-        self.num_adjacent_mines = tile.num_adjacent_mines
+        if tile.uncovered:
+            self.num_adjacent_mines = tile.num_adjacent_mines
+        else:
+            self.is_flagged = tile.is_flagged
+

@@ -11,10 +11,10 @@ from minesweeper_ai.agents.cbr_agent1 import CBRAgent1
 if __name__ == '__main__':
     # Constants (configurables)
     profile = False
-    benchmark = True
+    benchmark = False
     num_games_profile = 10
     num_games_benchmark = 10
-    num_games_other = 2
+    num_games_other = 100
     config = {'rows': 16, 'columns': 16, 'num_mines': 40}
     run_seed = 57
     agent_seed = 14
