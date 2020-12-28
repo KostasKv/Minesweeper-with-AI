@@ -233,25 +233,27 @@ class NoUnnecessaryGuessSolver(Agent):
 
         # sps_sure_moves = set()
 
-        disjoint_sections = self.getDisjointSections(sample, sps_sure_moves)
+        disjoint_sections = self.getDisjointSections(sample)
         
-        d = self.disjointSectionsToHighlights(disjoint_sections)
-        self.cheekyHighlight(d)
+        # d = self.disjointSectionsToHighlights(disjoint_sections)
+        # self.cheekyHighlight(d)
 
         if disjoint_sections:
             if self.use_num_mines_constraint:
-                # Adjust mines left by solutions found by SPS
-                num_mines_found_by_sps = sum(1 for (_, _, is_mine) in sps_sure_moves if is_mine)
-                updated_mines_left = self.mines_left - num_mines_found_by_sps
+                # # Adjust mines left based on number of solutions found by SPS
+                # num_mines_found_by_sps = sum(1 for (_, _, is_mine) in sps_sure_moves if is_mine)
+                # adjusted_mines_left = self.mines_left - num_mines_found_by_sps
+                adjusted_mines_left = self.mines_left
 
-                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, updated_mines_left)
+                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, adjusted_mines_left, sps_sure_moves)
             else:
-                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections) 
+                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves) 
         else:
             brute_sure_moves = set()
+
         f = self.sureMovesToHighlights(brute_sure_moves)
         self.cheekyHighlight(f)
-        self.removeHighlight(d)
+        # self.removeHighlight(d)
         self.removeHighlight(h)
         self.removeHighlight(f)
 
@@ -269,25 +271,17 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sample_count += 1
         self.highlightSample(sample)
 
-        # c = copy(sample)
-        # sps_sure_moves = self.singlePointStrategy(sample)
         sps_sure_moves = set()
-        
-        # h = self.sureMovesToHighlights(sps_sure_moves)
-        # self.cheekyHighlight(h)
-
-        # sps_sure_moves = set()
-
-        disjoint_sections = self.getDisjointSections(sample, sps_sure_moves)
+        disjoint_sections = self.getDisjointSections(sample)
         
         # d = self.disjointSectionsToHighlights(disjoint_sections)
         # self.cheekyHighlight(d)
 
         if disjoint_sections:
             if self.use_num_mines_constraint:
-                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left)
+                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left, sps_sure_moves)
             else:
-                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections)
+                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves)
         else:
             brute_sure_moves = set()
         
@@ -357,25 +351,37 @@ class NoUnnecessaryGuessSolver(Agent):
         return {(x, y, True) for (x, y) in all_sure_mines} | {(x, y, False) for (x, y) in all_sure_safe}
 
     def getTilesAndAdjacentsOfInterestForSPS(self, sample):
-        interest = []
-
         for (y, row) in enumerate(sample):
             for (x, tile) in enumerate(row):
                 if not tile or not tile.uncovered or tile.num_adjacent_mines < 1:
                     continue
 
                 num_adjacent_unknown_mines = tile.num_adjacent_mines
-                adjacent_coords = iter((x + i, y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0))
+                adjacent_coords = [(x + i, y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
                 
                 adjacent_unknown = set()
 
-                for (adj_x, adj_y) in adjacent_coords:
+                while adjacent_coords:
+                    (adj_x, adj_y) = adjacent_coords.pop()
+
                     # Tiles outside sample are assumed to be covered unknown tiles
                     if adj_x < 0 or adj_y < 0 or adj_x >= len(sample[0]) or adj_y >= len(sample):
                         adjacent_unknown.add((adj_x, adj_y))
                         continue
                     
-                    if sample[adj_y][adj_x] is None or sample[adj_y][adj_x].uncovered:
+                    if sample[adj_y][adj_x] is None:
+                        # If dim==0, wall is a column at (wall_dim_location, y), for any y.
+                        # If dim==1, wall is a row at (x, wall_dim_location), for any x.
+                        (wall_dim_location, dim) = self.getWallLocation((x, y), (adj_x, adj_y))
+
+                        # If it's known where the entire wall is, remove all coordinates belonging to that wall.
+                        if wall_dim_location is not None:
+                            adjacent_unknown = {coords for coords in adjacent_unknown if coords[dim] != wall_dim_location}
+                            adjacent_coords = [coords for coords in adjacent_coords if coords[dim] != wall_dim_location]
+
+                        continue
+
+                    if sample[adj_y][adj_x].uncovered:
                         continue
 
                     if sample[adj_y][adj_x].is_flagged:
@@ -453,19 +459,89 @@ class NoUnnecessaryGuessSolver(Agent):
 
     #     return sample
 
-    def bruteForceWithAllConstraints(self, sample, disjoint_sections, mines_left):
+    def bruteForceWithAllConstraints(self, sample, disjoint_sections, mines_left, sure_moves):
+        (num_tiles_outside_sample_surrounding, num_unknown_from_sample) = self.getNumTilesOutsideSampleSurroundingAndNumUnknownTilesForSample(sample)
+
+        # It's pointless to try bruteforcing if all unknown tiles from sample already have their solutions discovered
+        if len(sure_moves) == num_unknown_from_sample:
+            return set()
+
         # It's faster (and much simpler) to bruteforce one merged section if including total mines left constraint.
         all_sections_as_one = self.mergeSections(disjoint_sections)
 
-        # Prep arguments that will be used to create total-mines-left constraint
         frontier_tile_is_inside_sample = [1 if x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample) else 0 for (x, y) in all_sections_as_one[0]]
-        num_non_wall_tiles_in_sample = sum(1 for tile in chain.from_iterable(sample) if tile is not None)
-        num_tiles_in_grid = len(self.grid[0]) * len(self.grid)
-        num_tiles_outside_sample = num_tiles_in_grid - num_non_wall_tiles_in_sample
 
-        return self.bruteForceSection(sample, all_sections_as_one, frontier_tile_is_inside_sample, mines_left, num_tiles_outside_sample)
+        return self.bruteForceSection(sample, all_sections_as_one, sure_moves, num_unknown_from_sample, frontier_tile_is_inside_sample, mines_left, num_tiles_outside_sample_surrounding)
 
-    def bruteForceWithJustAdacentMinesConstraints(self, sample, disjoint_sections):
+    def getNumTilesOutsideSampleSurroundingAndNumUnknownTilesForSample(self, sample):
+        # Calculate how many unknown tiles there are from given sample (including surrounding area) for which a solution could possibly be found
+        num_unknown_inside_sample = sum(1 for tile in chain.from_iterable(sample) if tile and not tile.uncovered and not tile.is_flagged)
+
+        (tiles_outside_sample_surrounding, num_unknown_outside_sample) = self.getNumTilesOutsideSampleSurroundingAndNumUnknownSurroundingSample(sample)
+        num_unknown_from_sample = num_unknown_inside_sample + num_unknown_outside_sample
+
+        return (tiles_outside_sample_surrounding, num_unknown_from_sample)
+
+    def getNumTilesOutsideSampleSurroundingAndNumUnknownSurroundingSample(self, sample):
+        non_wall_tiles_in_sample = 0
+        top_is_wall = False
+        right_is_wall = False
+        bottom_is_wall = False
+        left_is_wall = False
+        max_x = len(sample[0]) - 1
+        max_y = len(sample) - 1
+
+        # Count number of non wall tiles inside sample, and figure out where the walls are (relative to sample) if any are detected.
+        for (y, row) in enumerate(sample):
+            for (x, tile) in enumerate(row):
+                if tile is None:
+                    is_corner = (x, y) in [(0, 0), (0, max_y), (max_x, 0), (max_x, max_y)]
+
+                    # Can't assume whether row or column is walls from a corner.
+                    if is_corner:
+                        continue
+
+                    if y == 0:
+                        top_is_wall = True
+                    elif y == max_y:
+                        bottom_is_wall = True
+                    
+                    if x == 0:
+                        left_is_wall = True
+                    elif x == max_x:
+                        right_is_wall = True
+                else:
+                    non_wall_tiles_in_sample += 1
+
+        t = int(top_is_wall)
+        r = int(right_is_wall)
+        b = int(bottom_is_wall)
+        l = int(left_is_wall)
+
+        # Calculate how many non-wall tiles are in and around sample
+        non_wall_width = len(sample[0]) + 2 - (2 * (l + r))
+        non_wall_height = len(sample) + 2 - (2 * (t + b))
+        tiles_inside_sample_and_surrounding = non_wall_width * non_wall_height
+
+        # Calculate how many tiles are outside sample and its surrounding area
+        total_tiles_in_grid = len(self.grid[0]) * len(self.grid)
+        tiles_outside_sample_surrounding = max(total_tiles_in_grid - tiles_inside_sample_and_surrounding, 0)
+
+        unknown_tiles_surrounding_sample = tiles_inside_sample_and_surrounding - non_wall_tiles_in_sample
+
+        return (tiles_outside_sample_surrounding, unknown_tiles_surrounding_sample)
+
+    def bruteForceWithJustAdacentMinesConstraints(self, sample, disjoint_sections, sure_moves):
+        # When only using adjacent mines constraints, the number unknown tiles that could possibly give
+        # solutions from sample is exactly equal to number of frontier tiles. All other unknown tiles in and around sample have
+        # no adjacent uncovered tiles and so cannot yield a solution from this bruteforce.
+        (all_frontier_tiles, _) = self.mergeSections(disjoint_sections)
+        num_unknown_from_sample = len(all_frontier_tiles)
+
+        # It's pointless to try bruteforcing if all unknown tiles from sample already have their solutions discovered
+        if len(sure_moves) == num_unknown_from_sample:
+            return set()
+
         all_sure_moves = set()
 
         # h = self.disjointSectionsToHighlights(disjoint_sections)
@@ -478,35 +554,40 @@ class NoUnnecessaryGuessSolver(Agent):
             # self.cheekyHighlight(h)
             # self.removeHighlight(h)
 
-            section_sure_moves = self.bruteForceSection(sample, section)
+            section_sure_moves = self.bruteForceSection(sample, section, sure_moves)
             all_sure_moves.update(section_sure_moves)
         
         return all_sure_moves
 
-    def bruteForceSection(self, sample, section, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
+    def bruteForceSection(self, sample, section, sure_moves, num_unknown_from_sample=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
         (frontier, fringe) = section
 
-        # Convert to a list so that tiles are ordered. That way we can reference
-        # which matrix column refers to which tile (i'th column in matrix represents
-        # i'th tile in list).
+        # Need tiles to be ordered so that a specific matrix column can refer to a specific tile
+        # (column i in matrix (left-to-right asc., 0-based) represents tile at index i in list).
         frontier = list(frontier)
         adjacent_mines_constraints = self.createAdjacentMinesConstraintMatrixOfSample(frontier, fringe)
 
-        return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        sure_moves_indexes = {(frontier.index((x, y)), is_mine) for (x, y, is_mine) in sure_moves if ((x, y) in frontier)}
 
-    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left=None, num_tiles_outside_sample=None):
-        definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_from_sample, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
-        sure_moves = set()
+    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
+        definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+
+        bruted_sure_moves = set()
 
         # Convert results into sure moves.
         for (index, is_mine) in definite_solutions:
-            coords = frontier[index]
-            sure_moves.add((*coords, is_mine,))
+            # Don't consider the already known solutions
+            if (index, is_mine) in sure_moves_indexes:
+                continue
 
-        return sure_moves
+            coords = frontier[index]
+            bruted_sure_moves.add((*coords, is_mine,))
+
+        return bruted_sure_moves
                 
-    def getDisjointSections(self, sample, discovered_sure_moves):
+    def getDisjointSections(self, sample):
         disjoint_sections = []
         # f = self.sureMovesToHighlights(discovered_sure_moves)
         # self.cheekyHighlight(f)
@@ -520,7 +601,7 @@ class NoUnnecessaryGuessSolver(Agent):
                     continue
                 # self.cheekyHighlight((x, y), 4)
                 
-                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines, discovered_sure_moves)
+                disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines)
                 # h = self.disjointSectionsToHighlights(disjoint_sections)
                 # self.cheekyHighlight(h)
                 # self.removeHighlight((x, y), 4)
@@ -528,8 +609,8 @@ class NoUnnecessaryGuessSolver(Agent):
         # self.removeHighlight(f)
         return disjoint_sections
 
-    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines, discovered_sure_moves):
-        adjacent_section = self.getAdjacentSectionForUncoveredSampleTile(sample, tile_coords, num_adjacent_mines, discovered_sure_moves)
+    def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines):
+        adjacent_section = self.getAdjacentSectionForUncoveredSampleTile(sample, tile_coords, num_adjacent_mines)
         frontier = adjacent_section[0]
            
         # Can only merge or find new sections based on frontier tiles in the adjacent section
@@ -538,7 +619,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return disjoint_sections
 
-    def getAdjacentSectionForUncoveredSampleTile(self, sample, tile_coords, num_adjacent_mines, discovered_sure_moves):
+    def getAdjacentSectionForUncoveredSampleTile(self, sample, tile_coords, num_adjacent_mines):
         adjacent_coords = [(tile_coords[0] + i, tile_coords[1] + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if not (i == 0 and j == 0)]
         mines_left_around_tile = num_adjacent_mines
         frontier = set()
@@ -546,12 +627,12 @@ class NoUnnecessaryGuessSolver(Agent):
         while adjacent_coords:
             (x, y) = adjacent_coords.pop()
 
-            # Update info based on moves discovered by previous strategies.
-            if (x, y, False) in discovered_sure_moves:
-                continue
-            if (x, y, True) in discovered_sure_moves:
-                mines_left_around_tile -= 1
-                continue
+            # # Update info based on moves discovered by previous strategies.
+            # if (x, y, False) in discovered_sure_moves:
+            #     continue
+            # if (x, y, True) in discovered_sure_moves:
+            #     mines_left_around_tile -= 1
+            #     continue
             
             # Outside tile is assumed to be covered, therefore this adjacent tile
             # is considered a frontier tile.
@@ -670,7 +751,7 @@ class NoUnnecessaryGuessSolver(Agent):
             for (frontier_x, frontier_y) in frontier:
                 # # Sure moves aren't variables, so skip them.
                 # if (frontier_x, frontier_y, True) in sure_moves:
-                #     num_unknown_adjacent_mines += 1
+                #     num_unknown_adjacent_mines -= 1
                 #     continue
                 # elif (frontier_x, frontier_y, False) in sure_moves:
                 #     continue

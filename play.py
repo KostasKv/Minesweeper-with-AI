@@ -18,8 +18,8 @@ if __name__ == '__main__':
     config = {'rows': 16, 'columns': 16, 'num_mines': 40}
     run_seed = 57
     agent_seed = 14
-    game_seeds = [7083311470311291716]
-    # game_seeds = None
+    # game_seeds = [7083311470311291716]
+    game_seeds = None
     sample_size = (5, 5)
     
     # Solvers
@@ -34,7 +34,6 @@ if __name__ == '__main__':
 
     if profile:
         print("Profiling. Running {} games...".format(num_games_profile))
-        # cProfile.run("run(solver_agent, config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed)", "solver.prof")
         cProfile.run("minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)", "solver1.prof")
         cProfile.run("minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)", "solver2.prof")
     if benchmark:
