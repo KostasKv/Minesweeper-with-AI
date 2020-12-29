@@ -460,27 +460,35 @@ class NoUnnecessaryGuessSolver(Agent):
     #     return sample
 
     def bruteForceWithAllConstraints(self, sample, disjoint_sections, mines_left, sure_moves):
-        (num_tiles_outside_sample_surrounding, num_unknown_from_sample) = self.getNumTilesOutsideSampleSurroundingAndNumUnknownTilesForSample(sample)
+        (num_tiles_outside_sample_surrounding, num_unknown_tiles_outside, num_unknown_tiles_inside) = self.getNumTilesOutsideSampleSurroundingAndNumUnknownTilesForSample(sample)
 
         # It's pointless to try bruteforcing if all unknown tiles from sample already have their solutions discovered
-        if len(sure_moves) == num_unknown_from_sample:
+        if len(sure_moves) == (num_unknown_tiles_outside + num_unknown_tiles_inside):
             return set()
 
         # It's faster (and much simpler) to bruteforce one merged section if including total mines left constraint.
         all_sections_as_one = self.mergeSections(disjoint_sections)
 
-        frontier_tile_is_inside_sample = [1 if x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample) else 0 for (x, y) in all_sections_as_one[0]]
+        frontier_tile_is_inside_sample = []
 
-        return self.bruteForceSection(sample, all_sections_as_one, sure_moves, num_unknown_from_sample, frontier_tile_is_inside_sample, mines_left, num_tiles_outside_sample_surrounding)
+        for (x, y) in all_sections_as_one[0]:
+            is_inside_sample = x >= 0 and y >= 0 and x < len(sample[0]) and y < len(sample)
+            if is_inside_sample:
+                frontier_tile_is_inside_sample.append(1)
+                num_unknown_tiles_inside -= 1
+            else:
+                frontier_tile_is_inside_sample.append(0)
+                num_unknown_tiles_outside -= 1
+
+        return self.bruteForceSection(sample, all_sections_as_one, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, mines_left, num_tiles_outside_sample_surrounding)
 
     def getNumTilesOutsideSampleSurroundingAndNumUnknownTilesForSample(self, sample):
         # Calculate how many unknown tiles there are from given sample (including surrounding area) for which a solution could possibly be found
         num_unknown_inside_sample = sum(1 for tile in chain.from_iterable(sample) if tile and not tile.uncovered and not tile.is_flagged)
 
         (tiles_outside_sample_surrounding, num_unknown_outside_sample) = self.getNumTilesOutsideSampleSurroundingAndNumUnknownSurroundingSample(sample)
-        num_unknown_from_sample = num_unknown_inside_sample + num_unknown_outside_sample
 
-        return (tiles_outside_sample_surrounding, num_unknown_from_sample)
+        return (tiles_outside_sample_surrounding, num_unknown_outside_sample, num_unknown_inside_sample)
 
     def getNumTilesOutsideSampleSurroundingAndNumUnknownSurroundingSample(self, sample):
         non_wall_tiles_in_sample = 0
@@ -559,7 +567,7 @@ class NoUnnecessaryGuessSolver(Agent):
         
         return all_sure_moves
 
-    def bruteForceSection(self, sample, section, sure_moves, num_unknown_from_sample=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
+    def bruteForceSection(self, sample, section, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
         (frontier, fringe) = section
 
         # Need tiles to be ordered so that a specific matrix column can refer to a specific tile
@@ -567,12 +575,14 @@ class NoUnnecessaryGuessSolver(Agent):
         frontier = list(frontier)
         adjacent_mines_constraints = self.createAdjacentMinesConstraintMatrixOfSample(frontier, fringe)
 
+        
+
         sure_moves_indexes = {(frontier.index((x, y)), is_mine) for (x, y, is_mine) in sure_moves if ((x, y) in frontier)}
 
-        return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_from_sample, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
-    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
-        definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+    def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
+        definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
         bruted_sure_moves = set()
 

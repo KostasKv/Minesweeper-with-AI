@@ -2,10 +2,10 @@ from ortools.sat.python import cp_model
 from copy import deepcopy
 
 class CpSolver():
-    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0):
-        if total_mines_left is not None and num_tiles_outside_sample is not None and frontier_tile_is_inside_sample is not None and num_unknown_tiles is not None:
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0):
+        if total_mines_left is not None and num_tiles_outside_sample is not None and frontier_tile_is_inside_sample is not None and num_unknown_tiles_outside is not None and num_unknown_tiles_inside is not None:
             num_frontier = len(frontier_tile_is_inside_sample)
-            (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
+            (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
         elif adjacent_mines_constraints:
             num_frontier = len(adjacent_mines_constraints[0]) - 1
             (model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints, sure_moves)
@@ -18,8 +18,10 @@ class CpSolver():
     def searchForDefiniteSolutionsUsingModelAndItsVars(self, model, variables):
         solver = cp_model.CpSolver()
         solver.Solve(model)
-        potential_definites = [solver.BooleanValue(v) for v in variables]
+        potential_definites = [solver.BooleanValue(v) for v in variables if v.Name().startswith("frontier")]
         
+        unknown_inside_tested = False
+
         # Test each frontier variable using an opposite assignment from that in the first solution.
         # If there doesn't exist a feasible solution using the opposite assignment, we know
         # that variable must have the assignment found in the first solution
@@ -30,9 +32,10 @@ class CpSolver():
             
             # We know setting the constant to it's opposite bool value will be infeasible.
             # No need to exhaust that entire search space just to prove it.
+            # Also checking unknown outsides is inefficient. Only need to check a single unknown inside.
             is_constant = variables[definite_index].Name() == ''
-            # is_outside_frontier = variables[definite_index].Name()[0] == 'y'
-            if is_constant:
+            is_unknown_outside = variables[definite_index].Name().startswith("unknown_outside")
+            if is_constant or is_unknown_outside or unknown_inside_tested:
                 continue
 
             # Put in opposite-val constraint on variable we're testing.
@@ -42,6 +45,10 @@ class CpSolver():
             test_model.Add(var == opp_val)
 
             status = solver.Solve(test_model)
+            
+            is_unknown_inside = var.Name().startswith("unknown_inside")
+            if is_unknown_inside:
+                unknown_inside_tested = True
 
             if status != cp_model.INFEASIBLE:
                 solution = [solver.BooleanValue(v) for v in variables]
@@ -51,14 +58,16 @@ class CpSolver():
                     # i is True in one and False in the other; it's not a definite solution.
                     if potential_definites[i] != solution[i]:
                         potential_definites[i] = None
+            elif is_unknown_inside:
+
 
         return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
 
 
-    def getModelWithAllBoardConstraints(self, num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged=0):
+    def getModelWithAllBoardConstraints(self, num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged=0):
         ''' Create a model built with all useful constraints possible for minesweeper using the information given.
             Assumes adjacent mine constraint coefficients are either 1 or 0. '''
-        (model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles)
+        (model, variables) = self.getModelWithAdjacentConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside)
 
         # Split variables into those that are inside the sample, and those that are outside it.
         v_inside = []
@@ -79,7 +88,7 @@ class CpSolver():
 
         return (model, variables)
     
-    def getModelWithAdjacentConstraints(self, num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles=None):
+    def getModelWithAdjacentConstraints(self, num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None):
         ''' Returns a model built with adjacent mine constraints.
             Assumes adjacent mine constraint coefficients are either 1 or 0. '''
         model = cp_model.CpModel()
@@ -92,14 +101,15 @@ class CpSolver():
             elif (i, False) in sure_moves:
                 var = model.NewConstant(0)  # Is clear
             else:
-                var = model.NewBoolVar(f'x{i}') # Could be either. Variables are named so as to differentiate them from constants.
+                var = model.NewBoolVar(f'frontier{i}') # Could be either. Variables are named so as to differentiate them from constants.
 
             variables.append(var)
 
-        if num_unknown_tiles is not None:
+        if num_unknown_tiles_outside is not None and num_unknown_tiles_inside is not None:
             # Add extra variables for any extra unknown tiles which aren't on the frontier (they can't have adjacent constraints but need to be included
             # in total mines constraint, and so the variables must be included in model if using total mines constraint). 
-            variables.extend(model.NewBoolVar(f'y{i}') for i in range(num_frontier, num_unknown_tiles))
+            variables.extend(model.NewBoolVar(f'unknown_outside{i}') for i in range(num_unknown_tiles_outside))
+            variables.extend(model.NewBoolVar(f'unknown_inside{i}') for i in range(num_unknown_tiles_inside))
 
         # # Create the variables
         # variables = [model.NewBoolVar(str(i)) for i in range(num_frontier)]
