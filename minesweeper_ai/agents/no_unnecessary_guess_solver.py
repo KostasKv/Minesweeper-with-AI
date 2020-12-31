@@ -575,27 +575,37 @@ class NoUnnecessaryGuessSolver(Agent):
         frontier = list(frontier)
         adjacent_mines_constraints = self.createAdjacentMinesConstraintMatrixOfSample(frontier, fringe)
 
-        
-
         sure_moves_indexes = {(frontier.index((x, y)), is_mine) for (x, y, is_mine) in sure_moves if ((x, y) in frontier)}
 
-        return self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        bruted_sure_moves, unknown_definite_solution = self.bruteForceUsingConstraintsSolver(frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        
+        if unknown_definite_solution is not None:
+            for (y, row) in enumerate(sample):
+                for (x, tile) in enumerate(row):
+                    if (x, y) in sure_moves or (x, y) in bruted_sure_moves:
+                        continue
+
+                    if not tile.uncovered and not tile.flagged:
+                        sure_move_of_unknown_tile = (x, y, unknown_definite_solution)
+                        bruted_sure_moves.add(sure_move_of_unknown_tile)
+
+        return bruted_sure_moves
 
     def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
-        definite_solutions = self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
+        (frontier_definite_solutions, unknown_definite_solution) =  self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
-        bruted_sure_moves = set()
+        sure_moves = set()
 
-        # Convert results into sure moves.
-        for (index, is_mine) in definite_solutions:
+        # Convert frontier results into sure moves.
+        for (index, is_mine) in frontier_definite_solutions:
             # Don't consider the already known solutions
             if (index, is_mine) in sure_moves_indexes:
                 continue
 
             coords = frontier[index]
-            bruted_sure_moves.add((*coords, is_mine,))
+            sure_moves.add((*coords, is_mine,))
 
-        return bruted_sure_moves
+        return sure_moves, unknown_definite_solution
                 
     def getDisjointSections(self, sample):
         disjoint_sections = []

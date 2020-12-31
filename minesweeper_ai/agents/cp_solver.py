@@ -12,15 +12,33 @@ class CpSolver():
         else:
             return []   # No adjacent mine constraints given, and not enough information for total-mines-left constraint.)
 
-        # num_non_frontier = num_unknown_tiles - num_frontier
-        return self.searchForDefiniteSolutionsUsingModelAndItsVars(model, variables)
+        return self.searchForDefiniteSolutionsUsingModelAndItsVars(model, variables, num_frontier)
 
-    def searchForDefiniteSolutionsUsingModelAndItsVars(self, model, variables):
+    def searchForDefiniteSolutionsUsingModelAndItsVars(self, model, variables, num_frontier):
+        '''Expects variables to be sorted such that all frontier variables are at the beginning of the variables list'''
         solver = cp_model.CpSolver()
-        solver.Solve(model)
-        potential_definites = [solver.BooleanValue(v) for v in variables if v.Name().startswith("frontier")]
+        status = solver.Solve(model)
+
+        if status == cp_model.INFEASIBLE:
+            raise ValueError("Model provided does not represent the board correctly; not a single solution was found for it.")
         
-        unknown_inside_tested = False
+        frontier_vars = variables[:num_frontier]
+
+        test_vars = frontier_vars
+        # Only test frontier tiles and a single unknown (non-frontier) tile inside sample.
+        
+        for v in variables[num_frontier:]:
+            if v.Name().startswith("unknown_inside"):
+                unknown_inside_var = v
+                test_vars.append(unknown_inside_var)
+                break
+        else:
+            unknown_inside_var = None
+
+        
+        potential_definites = [solver.BooleanValue(v) for v in test_vars]
+
+        # unknown_inside_potential_definite = solver.BooleanValue(unknown_inside_var) if unknown_inside_var else None
 
         # Test each frontier variable using an opposite assignment from that in the first solution.
         # If there doesn't exist a feasible solution using the opposite assignment, we know
@@ -30,38 +48,43 @@ class CpSolver():
             if potential_definites[definite_index] is None:
                 continue
             
-            # We know setting the constant to it's opposite bool value will be infeasible.
-            # No need to exhaust that entire search space just to prove it.
-            # Also checking unknown outsides is inefficient. Only need to check a single unknown inside.
-            is_constant = variables[definite_index].Name() == ''
-            is_unknown_outside = variables[definite_index].Name().startswith("unknown_outside")
-            if is_constant or is_unknown_outside or unknown_inside_tested:
+            var = test_vars[definite_index]
+
+            # Skip if it's a constant. We already know its definite value, no need to flip its value and exhaust
+            # the search space just to prove the opposite value is infeasible, which is already known.
+            if var.Name() == '':
                 continue
 
-            # Put in opposite-val constraint on variable we're testing.
-            var = variables[definite_index]
+            # Put in opposite-val constraint on variable we're testing. If that's infeasible then we know the variable can only
+            # ever be assigned its already discovered value (it's a definite value), otherwise it's indefinite.
             opp_val = not potential_definites[definite_index]
             test_model = deepcopy(model)
             test_model.Add(var == opp_val)
 
             status = solver.Solve(test_model)
-            
-            is_unknown_inside = var.Name().startswith("unknown_inside")
-            if is_unknown_inside:
-                unknown_inside_tested = True
 
             if status != cp_model.INFEASIBLE:
-                solution = [solver.BooleanValue(v) for v in variables]
+                solution = [solver.BooleanValue(v) for v in frontier_vars]
 
                 for i in range(definite_index, len(solution)):
                     # There exists two valid enumerations where the variable at index
                     # i is True in one and False in the other; it's not a definite solution.
                     if potential_definites[i] != solution[i]:
                         potential_definites[i] = None
-            elif is_unknown_inside:
+                
+                # # Update unknown inside var potential definite from solution too, if there is such a variable.
+                # if unknown_inside_var is not None and unknown_inside_potential_definite != solver.BooleanValue(unknown_inside_var):
+                #     unknown_inside_potential_definite = None
 
+        
+        if unknown_inside_var is not None:
+            unknown_inside_var_definite_solution = potential_definites.pop()
+        else:
+            unknown_inside_var_definite_solution = None
 
-        return [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
+        frontier_definite_solutions = [(i, x) for (i, x) in enumerate(potential_definites) if x is not None]
+
+        return (frontier_definite_solutions, unknown_inside_var_definite_solution)
 
 
     def getModelWithAllBoardConstraints(self, num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged=0):
