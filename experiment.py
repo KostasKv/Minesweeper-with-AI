@@ -5,6 +5,7 @@ import csv
 
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
+from tqdm import tqdm
 
 from minesweeper_ai import minesweeper
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
@@ -15,87 +16,19 @@ output_path_main = None
 output_path_constants = None
 all_results = []
 
-def validateFileName(output_file_name):
-    try:
-        assert(isinstance(output_file_name, str))
-        assert(output_file_name.strip() != '')
-    except:
-        raise ValueError("Output file name must be a non-empty string.")
-
-def saveResultsToCsv(results, file_name):
-    ''' Results are saved in 'data' folder. '''
+def saveDictRowsAsCsv(dict_rows, file_name):
+    ''' Each dict should represent a row where the keys are the field names for the CSV file.
+        File is saved in OUTPUT_DIR. '''
+    path = createOutputPathCSVFile(file_name)
 
     with open(path, 'w', newline='') as csvfile:
-        fieldnames = list(results[0].keys())
+        fieldnames = list(dict_rows[0].keys())
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
         writer.writeheader()
-        writer.writerows(results)
+        writer.writerows(dict_rows)
 
-def convertRunResultConfigToDifficultyString(result):
-    config = result['config']
-
-    if config['columns'] == 9 and config['rows'] == 9:
-        difficulty = 'Beginner (9x9)'
-    elif config['columns'] == 16 and config['rows'] == 16:
-        difficulty = 'Intermediate (16x16)'
-    elif config['columns'] == 30 and config['rows'] == 16:
-        difficulty = 'Expert (16x30)'
-    else:
-        raise ValueError("Difficulty not recognised from config {}".format(config))
-
-    # Replace config with difficulty string
-    result.pop('config')
-    result['difficulty'] = difficulty
-
-    return result
-
-def createTaskFromParameters(agent_parameters, other_parameters):
-    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
-    
-    method = minesweeper.run
-    args = (solver_agent)
-    kwargs = **other_parameters
-
-    return (method, args, kwargs)
-
-def createTasksFromSplitParameterGrid(parameter_grid):
-    tasks = []
-
-    for (i, (agent_parameters, other_parameters)) in enumerate(parameter_grid):
-        if agent_parameters['sample_size'] is None:
-             # Use sample that includes whole grid + walls
-            agent_parameters['sample_size'] = (other_parameters['config']['rows'] + 2, other_parameters['config']['columns'] + 2)
-
-
-    return tasks
-
-def storeResultsOnTaskComplete(results, task):
-    raise NotImplementedError
-
-    global all_results
-
-
-    
-
-    run_result = {**parameters, **results}
-    run_result = convertRunResultConfigToDifficultyString(run_result)
-
-    # Print out progress and parameters
-    parameters_string = '\t'.join(str(key) + ': ' + str(value) for (key, value) in agent_parameters.items() + other_parameters.items())
-    print("{}/{}:\t{}".format(i, len(parameter_grid), parameters_string))
-
-def onAllTasksComplete():
-    # Save experiment results
-    saveResultsToCsv(all_results, output_file_name)
-
-def completeTask(task, callback=storeResultsOnTaskComplete):
-    (method, args, kwargs) = task
-    results = method(*args, **kwargs)
-    callback(results, task)
-
-def createOutputPathCSVFile(output_file_name):
-    validateFileName(output_file_name)
+def createOutputPathCSVFile(file_name):
+    validateFileName(file_name)
 
     # Strip whitespace and .csv extension
     file_name = file_name.strip()
@@ -119,99 +52,73 @@ def createOutputPathCSVFile(output_file_name):
 
     return path
 
+def validateFileName(output_file_name):
+    try:
+        assert(isinstance(output_file_name, str))
+        assert(output_file_name.strip() != '')
+    except:
+        raise ValueError("Output file name must be a non-empty string.")
+
+def configToDifficultyString(config):
+    if config['columns'] == 9 and config['rows'] == 9:
+        difficulty = 'Beginner (9x9)'
+    elif config['columns'] == 16 and config['rows'] == 16:
+        difficulty = 'Intermediate (16x16)'
+    elif config['columns'] == 30 and config['rows'] == 16:
+        difficulty = 'Expert (16x30)'
+    else:
+        raise ValueError("Difficulty not recognised from config {}".format(config))
+
+    return difficulty
+
+def createTaskFromParameters(agent_parameters, other_parameters):
+    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
+    
+    method = minesweeper.run
+    args = (solver_agent, )
+    kwargs = other_parameters
+
+    return (method, args, kwargs)
+
+def createTasksFromSplitParameterGrid(parameter_grid):
+    tasks = []
+
+    for (i, (agent_parameters, other_parameters)) in enumerate(parameter_grid):
+        if agent_parameters['sample_size'] is None:
+             # None indicates whole grid, so use sample that includes whole grid + boundary walls
+            agent_parameters['sample_size'] = 
+        
+        task = createTaskFromParameters(agent_parameters, other_parameters)
+        tasks.append(task)
+
+    return tasks
+
+def completeTask(task, callback):
+    (method, args, kwargs) = task
+    results = method(*args, **kwargs)
+    callback(results, task)
+
 def appendToFileName(name, suffix):
     (name, ext) = os.path.splitext(name)
     return name + suffix + ext
 
-def runExperiment(parameter_grid, output_file_name):
-    # Prep
-    constants_output_file_name = appendToFileName(output_file_name, "_other-data")
+def onTaskCompleteStoreResultsInGlobal(results, task):
+    global all_results
 
-    output_path_main = createOutputPathCSVFile(output_file_name)
-    output_path_constants = createOutputPathCSVFile()
-    
-    tasks = createTasksFromSplitParameterGrid(parameter_grid)
+    _, args, kargs = task
+    agent = args[0]
 
-    # Play
-    for task in tasks:
-        completeTask(task, callback=storeResultsOnTaskComplete)
+    # Append extra info to the task results before storing
+    results['difficulty'] = configToDifficultyString(kargs['config'])
+    results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE)    # represent sample size tuple (A, B) as string 'AxB'. Easier to parse from csv imo.
+    results['use_num_mines_constraint'] = agent.use_num_mines_constraint
 
-    # End of experiment
-    saveAllResultsToCsv()
-    saveResultsToCsv(, constants_output)
-    saveResultsToCsv([constant_parameters], constants_output)
+    all_results.append(results)
 
-def getExperimentOneParameters():
-    title = "test"
-
-    agent_parameters = {
-        'variable': {
-            'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
-            'use_num_mines_constraint': [True, False],
-        },
-        'constant': {
-            'seed': 14,
-            'first_click_pos': None,
-        }
-    }
-
-    other_parameters = {
-        'variable': {
-            'config': [
-                {'rows': 9, 'columns': 9, 'num_mines': 10},
-                {'rows': 16, 'columns': 16, 'num_mines': 40},
-                {'rows': 16, 'columns': 30, 'num_mines': 99}
-            ],
-        },
-        'constant': {
-            'num_games': 1000,
-            'seed': 57,
-            'verbose': False,
-            'visualise': False,  
-        }
-    }
-
-    experiment = {
-        'title': title,
-        'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
-    }
-
-    return experiment
-
-def getExperimentTwoParameters():
-    title = "experiment2"
-
-    agent_parameters = {
-        'variable': {
-            'first_click_pos': [None, (2, 2)]
-        },
-        'constant': {
-            'sample_size': None,  # Sample size None means use full grid
-            'seed': 20,
-            'first_click_pos': None,
-            'use_num_mines_constraint': [True]
-        }
-    }
-
-    other_parameters = {
-        'variable': None,
-        'constant': {
-            'num_games': int(1e5),
-            'config': {'rows': 9, 'columns': 9, 'num_mines': 10},
-            'seed': 50,
-            'verbose': False,
-            'visualise': False,  
-        }
-    }
-
-    experiment = {
-        'title': title,
-        'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
-    }
-
-    return experiment
+def saveExperimentResultsFromGlobalToCsv(experiment):
+    global all_results
+    output_file_name = experiment['title']
+    saveDictRowsAsCsv(all_results, output_file_name)
 
 def getSplitParameterGridAndConstants(experiment):
     agent_variables = experiment['agent_parameters']['variable']
@@ -227,7 +134,6 @@ def getSplitParameterGridAndConstants(experiment):
         agent_constants = {}
     if other_constants is None:
         other_constants = {}
-
      
     variables = {}
 
@@ -259,26 +165,118 @@ def getSplitParameterGridAndConstants(experiment):
         
         split_parameter_grid_with_constants.append((agent_parameters, other_parameters))
 
+    # lazy patch for 'seed' being called same thing in both dicts
     constants = {**agent_constants, **other_constants}
+    constants.pop('seed')
+    constants['agent_seed'] = agent_constants['seed']
+    constants['run_seed'] = other_constants['seed']
 
     return (split_parameter_grid_with_constants, constants)
 
+def runExperiment(experiment, task_finish_callback, experiment_finish_callback):
+    print("Preparing experiment '{}'...".format(experiment['title']), end="")
 
-if __name__ == '__main__':
-    # Get experiment
-    experiment = getExperimentOneParameters()
+    # Prep
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
+    tasks = createTasksFromSplitParameterGrid(parameter_grid)
+    
+    # Save experiment info
+    constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
+    saveDictRowsAsCsv([constants], constants_output_file_name)
 
-    # Print out start-of-experiment info
+    # Print start-of-experiment info
     num_combinations = len(parameter_grid)
     num_games = constants['num_games']
-    print("Running {} games ({} total) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations))
-    
-    # Start experiment
-    start = time.time()
-    runExperiment(parameter_grid, experiment['title'])
-    end = time.time()
+    print(" DONE")
+    print("Now running {} games ({} overall) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations), end='')
 
-    duration = timedelta(seconds=round(end - start))
-    print(f"\nFinished in {duration} sec")
-    
+    # Run experiment
+    for task in tqdm(tasks, desc="Tasks complete", unit="task"):
+        completeTask(task, callback=task_finish_callback)
+
+    # End of experiment
+    print(" DONE")
+    experiment_finish_callback(experiment)
+
+def getExperimentOne():
+    ''' Purpose: A short experiment (~1 day or less) to do the following main things, among others: 
+                 1. Verify no-unecessary-guess solver works as intended by checking the solver gets the expected win rates for each difficulties (full grid, no guess).
+                 2. Try out numerous sample sizes with/without mine count constraint so as to give an indication of what the win rates look like for them (to help choose
+                    which sample sizes to test in a bigger solver experiment with many more games).
+                 3. Provide measurements of how long it takes to play a certain number of games for specific parameter combos, allowing for a reasonable estimate
+                    of the total run time to be made for any subsequent bigger solver experiments. '''
+        
+    title = "experiment 1 (the short one)"
+
+    agent_parameters = {
+        'variable': {
+            'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
+            'use_num_mines_constraint': [True, False],
+        },
+        'constant': {
+            'seed': 14,
+            'first_click_pos': None,
+        }
+    }
+
+    other_parameters = {
+        'variable': {
+            'config': [
+                {'rows': 9, 'columns': 9, 'num_mines': 10},
+                {'rows': 16, 'columns': 16, 'num_mines': 40},
+                {'rows': 16, 'columns': 30, 'num_mines': 99}
+            ],
+        },
+        'constant': {
+            'num_games': 2,
+            'seed': 57,
+            'verbose': False,
+            'visualise': False,  
+        }
+    }
+
+    experiment = {
+        'title': title,
+        'agent_parameters': agent_parameters,
+        'other_parameters': other_parameters
+    }
+
+    return experiment
+
+def getExperimentTwo():
+    title = "experiment 2"
+
+    agent_parameters = {
+        'variable': {
+            'first_click_pos': [None, (2, 2)]
+        },
+        'constant': {
+            'sample_size': None,  # Sample size None means use full grid
+            'seed': 20,
+            'first_click_pos': None,
+            'use_num_mines_constraint': True
+        }
+    }
+
+    other_parameters = {
+        'variable': None,
+        'constant': {
+            'num_games': int(1e5),
+            'config': {'rows': 9, 'columns': 9, 'num_mines': 10},
+            'seed': 50,
+            'verbose': False,
+            'visualise': False,  
+        }
+    }
+
+    experiment = {
+        'title': title,
+        'agent_parameters': agent_parameters,
+        'other_parameters': other_parameters
+    }
+
+    return experiment
+
+if __name__ == '__main__':
+    experiment = getExperimentOne()
+    runExperiment(experiment, task_finish_callback=onTaskCompleteStoreResultsInGlobal, experiment_finish_callback=saveExperimentResultsFromGlobalToCsv)

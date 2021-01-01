@@ -10,8 +10,7 @@ from ._no_screen_renderer import NoScreenRenderer
 def playGames(executor, renderer, verbose):
     ''' Program's main loop '''
 
-    stats = {'wins': 0,
-             'num_games': executor.num_games}
+    stats = {'wins': 0, 'wins_without_guess': 0}
     
     start_time = time.time()
 
@@ -29,6 +28,9 @@ def playGames(executor, renderer, verbose):
 
         if result[2] == _Game.State.WIN:
             stats['wins'] += 1
+
+            if not renderer.agent.had_to_guess_this_game:
+                stats['wins_without_guess'] += 1
 
         renderer.updateFromResult(result)
         action = renderer.getNextMove()
