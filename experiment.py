@@ -184,14 +184,13 @@ def runExperiment(experiment, task_finish_callback, experiment_finish_callback):
     num_combinations = len(parameter_grid)
     num_games = constants['num_games']
     print(" DONE")
-    print("Now running {} games ({} overall) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations), end='')
+    print("Running {} games ({} overall) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations))
 
     # Run experiment
     for task in tqdm(tasks, desc="Tasks complete", unit="task"):
         completeTask(task, callback=task_finish_callback)
 
     # End of experiment
-    print(" DONE")
     experiment_finish_callback(experiment)
 
 def getExperimentOne():
