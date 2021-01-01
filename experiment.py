@@ -84,10 +84,6 @@ def createTasksFromSplitParameterGrid(parameter_grid):
     tasks = []
 
     for (i, (agent_parameters, other_parameters)) in enumerate(parameter_grid):
-        if agent_parameters['sample_size'] is None:
-             # None indicates whole grid, so use sample that includes whole grid + boundary walls
-            agent_parameters['sample_size'] = 
-        
         task = createTaskFromParameters(agent_parameters, other_parameters)
         tasks.append(task)
 
@@ -228,7 +224,7 @@ def getExperimentOne():
             ],
         },
         'constant': {
-            'num_games': 2,
+            'num_games': 1000,
             'seed': 57,
             'verbose': False,
             'visualise': False,  

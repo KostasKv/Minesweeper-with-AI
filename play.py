@@ -15,7 +15,7 @@ if __name__ == '__main__':
     num_games_profile = 100
     num_games_benchmark = 10
     num_games_other = 100
-    config = {'rows': 16, 'columns': 16, 'num_mines': 40}
+    config = {'rows': 16, 'columns': 30, 'num_mines': 99}
     run_seed = 57
     agent_seed = 14
     # game_seeds = [7083311470311291716]
