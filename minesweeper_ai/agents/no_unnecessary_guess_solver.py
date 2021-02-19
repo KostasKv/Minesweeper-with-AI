@@ -58,7 +58,7 @@ class NoUnnecessaryGuessSolver(Agent):
         if self.first_click_pos is None:
             return self.clickRandom()
         else:
-            return (*self.first_click_pos, True)
+            return (*self.first_click_pos, False)
 
     # The method distinction between this and the one below helps with performance profiling since
     # program run time is then split in two between these two, rather than being stuck together under one
