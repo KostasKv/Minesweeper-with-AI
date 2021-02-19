@@ -82,7 +82,7 @@ class PygameRenderer(Renderer):
 
         # Assumes sprites folder is in the same directory as this script.
         DIR_THIS_SCRIPT_IS_IN = os.path.dirname(os.path.realpath(__file__))
-        SPRITES_FOLDER_PATH = DIR_THIS_SCRIPT_IS_IN + "\\sprites\\"
+        SPRITES_FOLDER_PATH = os.path.join(DIR_THIS_SCRIPT_IS_IN, "sprites", "")
 
         for file_name in os.listdir(SPRITES_FOLDER_PATH):
             # Load
