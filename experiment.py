@@ -108,6 +108,8 @@ def onTaskCompleteStoreResultsInGlobal(results, task):
     results['difficulty'] = configToDifficultyString(kargs['config'])
     results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE)    # represent sample size tuple (A, B) as string 'AxB'. Easier to parse from csv imo.
     results['use_num_mines_constraint'] = agent.use_num_mines_constraint
+    results['first_click_pos'] = agent.first_click_pos
+    results['first_click_is_zero'] = kargs['config']['first_click_is_zero']
 
     all_results.append(results)
 
@@ -193,7 +195,62 @@ def runExperiment(experiment, task_finish_callback, experiment_finish_callback):
     # End of experiment
     experiment_finish_callback(experiment)
 
-def getExperimentOne():
+def getExperiment0():
+    ''' Purpose: A very short experiment (<1 hour) to verify that the solver's win rate is as expected for each difficulty
+        using the full grid as its sample size (this is compared to other existing solvers that also play all safe moves
+        that can be deduced first).
+
+        Expected win rates (no guesses) are as follows:
+        - ~92% Beginner
+        - ~72% Intermediate
+        - ~16% Expert 
+        
+        A select few factors are varied as they may have an impact on the win rate. Each combination is tried in the hopes
+        of finding the set of results that are comparable to other existing solvers, and also to see how large of an impact they
+        have on the win rate, if any.
+    '''
+        
+    title = "Solver verification experiment"
+
+    agent_parameters = {
+        'variable': {
+            'first_click_pos': [None, (3, 3)]
+        },
+        'constant': {
+            'seed': 14,
+            'sample_size': None,  # Sample size None means use full grid
+            'use_num_mines_constraint': True,
+        }
+    }
+
+    other_parameters = {
+        'variable': {
+            'config': [
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
+            ],
+        },
+        'constant': {
+            'num_games': 1000,
+            'seed': 57,
+            'verbose': False,
+            'visualise': False,  
+        }
+    }
+
+    experiment = {
+        'title': title,
+        'agent_parameters': agent_parameters,
+        'other_parameters': other_parameters
+    }
+
+    return experiment
+
+def getExperiment1():
     ''' Purpose: A short experiment (~1 day or less) to do the following main things, among others: 
                  1. Verify no-unecessary-guess solver works as intended by checking the solver gets the expected win rates for each difficulties (full grid, no guess).
                  2. Try out numerous sample sizes with/without mine count constraint so as to give an indication of what the win rates look like for them (to help choose
@@ -238,7 +295,7 @@ def getExperimentOne():
 
     return experiment
 
-def getExperimentTwo():
+def getExperiment2():
     title = "experiment 2"
 
     agent_parameters = {
@@ -273,5 +330,5 @@ def getExperimentTwo():
     return experiment
 
 if __name__ == '__main__':
-    experiment = getExperimentOne()
+    experiment = getExperiment0()
     runExperiment(experiment, task_finish_callback=onTaskCompleteStoreResultsInGlobal, experiment_finish_callback=saveExperimentResultsFromGlobalToCsv)

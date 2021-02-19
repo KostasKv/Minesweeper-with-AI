@@ -31,9 +31,9 @@ class _Game:
         if any(key not in config for key in required_keys):
             raise KeyError("Game configuration needs the following keys: {}".format(', '.join(required_keys)))
         
-        # Check all values are positive
-        if any(value <= 0 for value in config.values()):
-            raise ValueError("All game configuration values must be positive")
+        # # Check all values are positive
+        # if any(value <= 0 for value in config.values()):
+        #     raise ValueError("All game configuration values must be positive")
 
         # Check grid isn't too small, i.e. dimensions are Nx1 or 1xM
         if config['rows'] <= 1 or config ['columns'] <= 1:
