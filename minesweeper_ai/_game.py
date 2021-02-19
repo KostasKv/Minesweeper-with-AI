@@ -66,14 +66,20 @@ class _Game:
             
             self.grid.append(row)
 
-    def onFirstClick(self, excluded_tile_pos):
-        self._populateGrid(excluded_tile_pos, self.seed)
+    def onFirstClick(self, clicked_tile_coords):
+        no_mine_tiles = [clicked_tile_coords]
 
-    def _populateGrid(self, excluded_tile_pos, seed):
-        self._populateGridWithMines(excluded_tile_pos, seed)
+        if self.config['first_click_is_zero'] == True:
+            adj_tiles = self.get_adjacent_tile_coords(*clicked_tile_coords)
+            no_mine_tiles.extend(adj_tiles)
+        
+        self._populateGrid(no_mine_tiles, self.seed)
+
+    def _populateGrid(self, excluded_tiles_coords, seed):
+        self._populateGridWithMines(excluded_tiles_coords, seed)
         self._markGridSquaresWithMineProximityCount()
 
-    def _populateGridWithMines(self, excluded_tile_pos, seed):
+    def _populateGridWithMines(self, excluded_tiles_coords, seed):
         ''' 
             Excludes tile that was clicked on in first click by player. First click is always safe in minesweeper.
             Game grid generated is based off of seed provided. Using the same seed will create the same grid.
@@ -86,9 +92,9 @@ class _Game:
 
         seeded_generator = Random(seed)
         for _ in range(self.config['num_mines']):
-            self._placeMineInRandomEmptySquare(excluded_tile_pos, seeded_generator)   
+            self._placeMineInRandomEmptySquare(excluded_tiles_coords, seeded_generator)   
 
-    def _placeMineInRandomEmptySquare(self, excluded_tile_pos, seeded_generator):
+    def _placeMineInRandomEmptySquare(self, excluded_tiles_coords, seeded_generator):
         mine_placed = False
 
         # Keep trying random squares until an empty (non-mine) square is found
@@ -96,7 +102,7 @@ class _Game:
             x = seeded_generator.randrange(0, self.config['columns'])
             y = seeded_generator.randrange(0, self.config['rows'])
 
-            if (x, y) != excluded_tile_pos and not self.grid[y][x].is_mine:
+            if (x, y) not in excluded_tiles_coords and not self.grid[y][x].is_mine:
                 self.grid[y][x].is_mine = True
                 mine_placed = True
 
