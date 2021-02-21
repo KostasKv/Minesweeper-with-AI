@@ -1,5 +1,6 @@
-from ortools.sat.python import cp_model
 from copy import deepcopy
+
+from ortools.sat.python import cp_model
 
 class CpSolver():
     def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0):

@@ -1,10 +1,10 @@
 from random import Random
-from itertools import chain, combinations
-from iteration_utilities import deepflatten
 from copy import copy
+from itertools import chain, combinations
+
+from iteration_utilities import deepflatten
 
 from .cp_solver import CpSolver
-
 from .agent import Agent
 from minesweeper_ai._game import _Game
 
@@ -17,12 +17,14 @@ class NoUnnecessaryGuessSolver(Agent):
         self.seed = seed
 
         self.random = Random(seed)  # This might need changing before experimenting. (agent always picks same first tile between games. Not so random)
-        self.samples_considered_already = set()
-        self.sample_pos = None
-        self.sure_moves_not_played_yet = set()
         self.cp_solver = CpSolver()
         self.renderer = None
+        self.sample_pos = None
+        self.samples_considered_already = set()
+        self.sample_selection_tiles_to_ignore = set()
+        self.sure_moves_not_played_yet = set()
 
+        # Used in games statistics
         self.sample_count = 0
         self.samples_with_solution_count = 0
         self.had_to_guess_this_game = False
@@ -64,11 +66,36 @@ class NoUnnecessaryGuessSolver(Agent):
     # program run time is then split in two between these two, rather than being stuck together under one
     # method name and so their seperate run times are hard to distinguish.
     def lookForSureMovesFromGridSamplesFocussedOnGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=True)
+        temp_sample_hashes = set(self.samples_considered_already)
+        moves1 = self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=True)
+        
+        samples_considered_already_1 = set(self.samples_considered_already)
+
+        self.samples_considered_already = set(temp_sample_hashes)
+        moves2 = self.lookForSureMovesFromGridSamplesOPTIMISATIONTEST(sample_size, limit_search_to_frontier=True)
+        self.samples_considered_already = set(samples_considered_already_1)
+
+        if len(moves1) * len(moves2) == 0 and len(moves1) + len(moves2) > 0:
+            raise Exception("One method didn't find sure moves the other did! Was there a mistake with the optimisation technique?")
+        
+
+        return moves1
 
     def lookForSureMovesFromAllUsefulGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=False)
+        temp_sample_hashes = copy(self.samples_considered_already)
+        moves1 = self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=False)
+        
+        samples_considered_already_1 = copy(self.samples_considered_already)
+        
+        self.samples_considered_already = copy(temp_sample_hashes)
+        moves2 = self.lookForSureMovesFromGridSamplesOPTIMISATIONTEST(sample_size, limit_search_to_frontier=False)
+        self.samples_considered_already = copy(samples_considered_already_1)
 
+        if len(moves1) * len(moves2) == 0 and len(moves1) + len(moves2) > 0:
+            raise Exception("One method didn't find sure moves the other did! Was there a mistake with the optimisation technique?")
+
+        return moves1
+    
     def lookForSureMovesFromGridSamples(self, size, limit_search_to_frontier=False):
         samples = self.getUsefulSampleAreasFromGrid(size, limit_search_to_frontier=limit_search_to_frontier)
 
@@ -76,9 +103,30 @@ class NoUnnecessaryGuessSolver(Agent):
             sample_hash = self.getSampleHash(sample, sample_pos)
             
             if sample_hash not in self.samples_considered_already:
+                # self.highlightSample(sample)
+                
                 self.samples_considered_already.add(sample_hash)
                 sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
+                # self.removeAllSampleHighlights(sample)
+                if sure_moves:
+                    return sure_moves
+                    
+        # No sure moves found
+        return set()
 
+    def lookForSureMovesFromGridSamplesOPTIMISATIONTEST(self, size, limit_search_to_frontier=False):
+        # samples = self.getUsefulSampleAreasFromGrid(size, limit_search_to_frontier=limit_search_to_frontier)
+        samples = self.getUsefulSampleAreasFromGridOPTIMISATIONTEST(size, limit_search_to_frontier=limit_search_to_frontier)
+        
+        for (sample, sample_pos) in samples:
+            sample_hash = self.getSampleHash(sample, sample_pos)
+            
+            if sample_hash not in self.samples_considered_already:
+                # self.highlightSample(sample)
+                
+                self.samples_considered_already.add(sample_hash)
+                sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
+                # self.removeAllSampleHighlights(sample)
                 if sure_moves:
                     return sure_moves
                     
@@ -102,6 +150,155 @@ class NoUnnecessaryGuessSolver(Agent):
 
         for (x, y) in frontier_tile_coords:
             yield self.getSamplePosOfSampleCenteredOnTile(x, y, size)
+
+
+    def getUsefulSampleAreasFromGridOPTIMISATIONTEST(self, size, limit_search_to_frontier=False):
+        # Note that these sample positions will include the outside grid wall (1 tile thick at most)
+        # in the samples. Knowing a sample is beside a wall is useful info and can lead to sure moves.
+        if limit_search_to_frontier:
+            # sample_positions = self.getAllSamplePosCenteredOnFrontier(size)
+            sample_positions = self.getAllSamplePosCenteredOnFrontierOPTIMISATIONTEST(size)
+        else:
+            sample_positions = self.getAllSamplePosOfSamplesWhichCouldGiveSolutions(size)
+
+        for pos in sample_positions:
+            sample = self.getSampleAtPosition(pos, size, self.grid)
+            yield (sample, pos)
+
+    def getAllSamplePosCenteredOnFrontierOPTIMISATIONTEST(self, size):
+        # frontier_tile_coords = self.getAllFrontierTileCoords()
+        disjoint_sections = self.getAllDisjointSections()
+        
+
+        for (frontier, fringe) in disjoint_sections:
+            frontier = {(x - 1, y - 1) for (x, y) in frontier}
+            fringe = {(x - 1, y - 1) for (x, y, _) in fringe}
+            
+            # sample_positions = self.getAllSamplesPosFullyContainingFrontier(frontier_coords, self.grid, size)
+            sample_pos = self.getSampleThatContainsSectionEntirely((frontier, fringe), self.grid, size)
+
+
+            if sample_pos:
+                yield sample_pos
+
+                self.sample_selection_tiles_to_ignore |= frontier | fringe
+
+                # for pos in sample_positions:
+                #     redundant_sample = self.getSampleAtPosition(pos, size, self.grid)
+                #     sample_hash = self.getSampleHash(redundant_sample, pos)
+                #     self.samples_considered_already.add(sample_hash)
+
+                # yield sample_to_yield
+            else:
+                for (x, y) in frontier:
+                    yield self.getSamplePosOfSampleCenteredOnTile(x, y, size)
+
+    def sampleContainingWholeGridAndBoundary(self):
+        boundary_row = [None] * (len(self.grid[0]) + 2)
+        whole_grid_sample = []
+
+        # Build full-grid containing sample
+        whole_grid_sample.append(boundary_row)
+        for row in self.grid:
+            whole_grid_sample.append([None] + row + [None])
+        whole_grid_sample.append(boundary_row)
+        
+        return whole_grid_sample
+
+    def getAllDisjointSections(self):
+        whole_grid_sample = self.sampleContainingWholeGridAndBoundary()
+        self.sample_pos = (-1, -1)
+        # self.highlightSample(whole_grid_sample)
+        disjoint_sections = self.getDisjointSections(whole_grid_sample)
+        # h = self.disjointSectionsToHighlights(disjoint_sections)
+        # self.cheekyHighlight(h)
+        # disjoint_frontiers = []
+
+        # for (i, section) in enumerate(disjoint_sections, 4):
+        #     (frontier, _) = section
+        #     disjoint_frontiers.append(frontier)
+
+        #     i = max(4, i % 12)
+        #     self.cheekyHighlight(frontier, i)
+
+        # return disjoint_frontiers
+        return disjoint_sections
+
+    def getSampleThatContainsSectionEntirely(self, section, grid, sample_size):
+        ''' Returns top-left coords of sample containing all the tile information relevant
+            to deciding sure moves of the given section if such a sample exists.
+            Otherwise, returns None.
+            Note that fringe tiles depend on their adjacent tiles, so a fringe tile that
+            initially seems to to be on the perimeter of the section actually extends the
+            perimeter width/height by 1 extra tile to include those adjacent tiles.
+        '''
+        (frontier, fringe) = section
+
+        frontier_coords_sorted_by_x = sorted(frontier, key=lambda coords: coords[0])
+        frontier_coords_sorted_by_y = sorted(frontier, key=lambda coords: coords[1])
+        fringe_coords_sorted_by_x = sorted(fringe, key=lambda coords: coords[0])
+        fringe_coords_sorted_by_y = sorted(fringe, key=lambda coords: coords[1])
+
+        frontier_min_x = frontier_coords_sorted_by_x[0][0]
+        frontier_max_x = frontier_coords_sorted_by_x[-1][0]
+        frontier_min_y = frontier_coords_sorted_by_y[0][1]
+        frontier_max_y = frontier_coords_sorted_by_y[-1][1]
+
+        fringe_min_x = fringe_coords_sorted_by_x[0][0]
+        fringe_max_x = fringe_coords_sorted_by_x[-1][0]
+        fringe_min_y = fringe_coords_sorted_by_y[0][1]
+        fringe_max_y = fringe_coords_sorted_by_y[-1][1]
+
+        # Get section's perimeter min and max coords. Fringe tiles depend on adjacent
+        # tiles which need to be included in the sample hence the extra tile included for
+        # fringe coords
+        section_min_x = min(frontier_min_x, fringe_min_x - 1)
+        section_max_x = min(frontier_max_x, fringe_max_x + 1)
+        section_min_y = min(frontier_min_y, fringe_min_y - 1)
+        section_max_y = min(frontier_max_y, fringe_max_y + 1)
+
+        width = section_max_x - section_min_x + 1
+        height = section_max_y - section_min_y + 1
+        frontier_tiles_can_fit_inside_sample = (width <= sample_size[0]) \
+                                           and (height <= sample_size[1])
+
+        if frontier_tiles_can_fit_inside_sample:
+            sample_pos = (section_min_x, section_min_y)
+        else:
+            sample_pos = None
+        
+        return sample_pos
+
+    # def getAllSamplesPosFullyContainingFrontier(self, frontier_coords, grid, sample_size):
+    #     coords_sorted_by_x = sorted(frontier_coords, key=lambda coords: coords[0])
+    #     coords_sorted_by_y = sorted(frontier_coords, key=lambda coords: coords[1])
+
+    #     (min_x, _) = coords_sorted_by_x[0]
+    #     (max_x, _)  = coords_sorted_by_x[-1]
+    #     (_, min_y) = coords_sorted_by_y[0]
+    #     (_,max_y)  = coords_sorted_by_y[-1]
+
+    #     frontier_width = max_x - min_x + 1
+    #     frontier_height = max_y - min_y + 1
+
+    #     frontier_tiles_can_fit_inside_sample = (frontier_width <= sample_size[0]) \
+    #                                        and (frontier_height <= sample_size[1])
+        
+    #     sample_positions = []
+
+    #     if frontier_tiles_can_fit_inside_sample:
+    #         x_wiggle_room = sample_size[0] - frontier_width
+    #         y_wiggle_room = sample_size[1] - frontier_height
+
+    #         for x in range(min_x - x_wiggle_room, min_x + 1):
+    #             for y in range(min_y - y_wiggle_room, min_y + 1):
+    #                 s = self.getSampleAtPosition((x, y), sample_size, grid)
+    #                 self.highlightSample(s)
+    #                 self.removeAllSampleHighlights(s)
+    #                 sample_positions.append((x, y))
+            
+        
+    #     return sample_positions
 
     def getAllFrontierTileCoords(self):
         for (y, row) in enumerate(self.grid):
@@ -152,10 +349,19 @@ class NoUnnecessaryGuessSolver(Agent):
 
         for y in range(min_y, max_y + 1):
             for x in range(min_x, max_x + 1):
-                if self.existsCoveredAndUncoveredTileInOrJustOutsideSample((x, y), sample_rows, sample_cols):
+                if self.sampleCouldGiveSureMoves((x, y), sample_rows, sample_cols):
                     yield (x, y)
 
-    def existsCoveredAndUncoveredTileInOrJustOutsideSample(self, pos, sample_rows, sample_cols):
+    def sampleCouldGiveSureMoves(self, pos, sample_rows, sample_cols):
+        ''' A sample is considered to possible contain sure moves if it contains both
+            a covered tile and an uncovered tile. i.e., it is not a sample consisting of entirely uncovered tiles
+            or entirely covered tiles.
+            
+            This excludes tiles in self.samples_selection_tiles_to_ignore which are tiles
+            that are part of some disjoint section that has already been wholly checked for
+            sure moves and is confirmed to not contain any. Therefore having these tiles in a
+            sample cannot lead to any sure moves this turn and so are ignored.'''
+
         exists_covered = False
         exists_uncovered = False
 
@@ -165,6 +371,11 @@ class NoUnnecessaryGuessSolver(Agent):
                 if x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid):
                     continue
                 
+                # Is part of a section that has already been completely checked this turn.
+                # That means it cannot lead to any solutions this turn so ignore it.
+                if (x, y) in self.sample_selection_tiles_to_ignore:
+                    continue
+
                 if self.grid[y][x].uncovered:
                     exists_uncovered = True
                 elif not self.grid[y][x].is_flagged:
@@ -473,14 +684,20 @@ class NoUnnecessaryGuessSolver(Agent):
                 # determines whether or not the sections are disjoint).
                 if not tile or not tile.uncovered or tile.num_adjacent_mines < 1:
                     continue
-                
+                # self.cheekyHighlight((x, y), 4)
                 disjoint_sections = self.updateSampleDisjointSectionsBasedOnUncoveredTile(sample, disjoint_sections, (x, y), tile.num_adjacent_mines)
+                # h = self.disjointSectionsToHighlights(disjoint_sections)
+                # self.cheekyHighlight(h)
+                # self.removeHighlight(h)
+                # self.removeHighlight((x, y), 4)
 
         return disjoint_sections
 
     def updateSampleDisjointSectionsBasedOnUncoveredTile(self, sample, disjoint_sections, tile_coords, num_adjacent_mines):
         adjacent_section = self.getAdjacentSectionForUncoveredSampleTile(sample, tile_coords, num_adjacent_mines)
         frontier = adjacent_section[0]
+        # self.cheekyHighlight(frontier, 7)
+        # self.removeHighlight(frontier, 7)
            
         # Can only merge or find new sections based on frontier tiles in the adjacent section
         if frontier:
@@ -672,6 +889,8 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sure_moves_not_played_yet = self.pruneIllegalSureMoves(self.sure_moves_not_played_yet)
         self.last_move_was_sure_move = None
 
+        self.sample_selection_tiles_to_ignore = set()
+
     def pruneIllegalSureMoves(self, sure_moves):
         ''' Gets rid of sure moves that cannot actually be played. '''
         valid_sure_moves = set()
@@ -779,14 +998,14 @@ class NoUnnecessaryGuessSolver(Agent):
         if transform:
             tile_coords = self.transformCoords(tile_coords, transform=transform)
 
-            # Remove coordinates that end up out of bounds after transformation
-            for i in range(len(tile_coords) -1, -1, -1):
-                (x, y) = tile_coords[i]
-                outside_grid_bounds = (x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid))
+        # Remove coordinates that are out of bounds
+        for i in range(len(tile_coords) -1, -1, -1):
+            (x, y) = tile_coords[i]
+            outside_grid_bounds = (x < 0 or y < 0 or x >= len(self.grid[0]) or y >= len(self.grid))
 
-                if outside_grid_bounds:
-                    tile_coords.pop(i)
-                    codes.pop(i)
+            if outside_grid_bounds:
+                tile_coords.pop(i)
+                codes.pop(i)
     
         return list(zip(tile_coords, codes))
 
