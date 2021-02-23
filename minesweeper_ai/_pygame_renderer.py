@@ -1,6 +1,7 @@
 import os
 from enum import Enum
 
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide' # Disable pygame's console welcome message
 import pygame
 
 from ._game import _Game

@@ -15,8 +15,7 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    # experiment = getExperiment2()
-    experiment = getExperimentTEST()
+    experiment = getExperiment2()
     games_batch_size = 10
     runExperiment(experiment, games_batch_size)
 
@@ -370,7 +369,7 @@ def getExperiment2():
             ],
         },
         'constant': {
-            'num_games': 2,
+            'num_games': 1000,
             'seed': 57,
             'verbose': False,
             'visualise': False,  
