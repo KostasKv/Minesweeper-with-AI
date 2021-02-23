@@ -76,7 +76,7 @@ def getSplitParameterGridAndConstants(experiment):
     
     # Split each parameter combination dict in grid into tuple of 2 dicts, where the former
     # contains all the agent parameters, and the latter all the others. Including constants.
-    for (i, parameters_combo) in enumerate(variables_parameter_grid):
+    for parameters_combo in variables_parameter_grid:
         agent_parameters = {**agent_constants}
         other_parameters = {**other_constants}
 
