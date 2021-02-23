@@ -13,44 +13,37 @@ import more_itertools
 from minesweeper_ai import minesweeper
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'data')
-output_path_main = None
-output_path_constants = None
-
 
 def main():
     # experiment = getExperiment2()
     experiment = getExperimentTEST()
-    runExperiment(experiment, task_handler=completeTaskAndReturnExtendedResults, experiment_finish_callback=saveResultsToCsv, games_batch_size=10)
+    games_batch_size = 10
+    runExperiment(experiment, games_batch_size)
 
-def runExperiment(experiment, task_handler, experiment_finish_callback, games_batch_size=50):
-    (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, games_batch_size)
+def runExperiment(experiment, batch_size):
+    (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size)
 
+    task_handler = experiment['task_handler']
     CPUs_available = os.cpu_count()
 
     # Run experiment using all CPU cores available
     with Pool(processes=CPUs_available) as p:
         all_results = list(tqdm(p.imap(task_handler, tasks_info), total=len(tasks_info)))
 
-    # # Save experiment constants info as seperate file
-    # constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
-    # saveDictRowsAsCsv([constants], constants_output_file_name)
+    onEndOfExperiment(experiment, all_results, constants)
 
-    experiment_finish_callback(experiment, all_results)
-
-def experimentPrepAndGetTasksAndConstants(experiment, games_batch_size):
+def experimentPrepAndGetTasksAndConstants(experiment, batch_size):
     print("Preparing experiment '{}'...".format(experiment['title']), end="")
 
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
+    tasks = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
     num_combinations = len(parameter_grid)
     num_games = constants['num_games']
-    tasks = createTasksFromSplitParameterGrid(parameter_grid, games_batch_size)
 
     # Display start-of-experiment info
     print(" DONE")
-    print("Running {} games for each of {} different parameter combinations...\n".format(num_games, num_combinations))
-    print("Total games: {}   Batch size: {}   Total tasks: {}".format((num_games * num_combinations), games_batch_size, len(tasks)))
+    print("Running {} games for each of {} different parameter combinations...".format(num_games, num_combinations))
+    print("\nTotal games: {}   Batch size: {}   Total tasks: {}".format((num_games * num_combinations), batch_size, len(tasks)))
     return (tasks, constants)
 
 def getSplitParameterGridAndConstants(experiment):
@@ -106,6 +99,54 @@ def getSplitParameterGridAndConstants(experiment):
 
     return (split_parameter_grid_with_constants, constants)
 
+def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
+    tasks_info = []
+
+    for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
+        tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=batch_size)
+        
+        # Sticking on the parameters_id to each task so the results from all the tasks 
+        # can more easily be grouped by their parameters
+        for task in tasks:
+            task_info = (parameters_id, task)
+            tasks_info.append(task_info)
+
+    return tasks_info
+
+def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
+    ''' Batch size is the number of games to play for a task. '''
+    # Create game seeds for entire run on this combination of parameters
+    num_games = other_parameters['num_games']
+    run_seed = other_parameters['seed']
+    game_seeds = minesweeper.create_game_seeds(num_games, run_seed)
+    
+    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
+    method = minesweeper.run
+    args = (solver_agent, )
+    tasks = []
+
+    # Batch game seeds and put them into tasks
+    for seed_batch in more_itertools.chunked(game_seeds, batch_size):
+        kwargs = copy(other_parameters)     # Ensure each task uses a different kwargs after modification
+        kwargs['game_seeds'] = seed_batch
+
+        task = (method, args, kwargs)
+        tasks.append(task)
+
+    return tasks
+
+def onEndOfExperiment(experiment, all_results, constants):
+    # Save experiment constants info as seperate file
+    constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
+    saveDictRowsAsCsv([constants], constants_output_file_name)
+
+    callback = experiment['on_finish']
+    callback(experiment, all_results)
+
+def saveResultsToCsv(experiment, results):
+    output_file_name = experiment['title']
+    saveDictRowsAsCsv(results, output_file_name)
+
 def saveDictRowsAsCsv(dict_rows, file_name):
     ''' Each dict should represent a row where the keys are the field names for the CSV file.
         File is saved in OUTPUT_DIR. '''
@@ -128,6 +169,9 @@ def createOutputPathCSVFile(file_name):
     if ext == '.csv':
         file_name = file_name_without_ext
 
+    SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+    OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'data')
+
     path = os.path.join(OUTPUT_DIR, file_name)
 
     # Don't overwrite existing data. Instead append a number to the filename.
@@ -148,54 +192,6 @@ def validateFileName(output_file_name):
         assert(output_file_name.strip() != '')
     except:
         raise ValueError("Output file name must be a non-empty string.")
-
-def configToDifficultyString(config):
-    if config['columns'] == 9 and config['rows'] == 9:
-        difficulty = 'Beginner (9x9)'
-    elif config['columns'] == 16 and config['rows'] == 16:
-        difficulty = 'Intermediate (16x16)'
-    elif config['columns'] == 30 and config['rows'] == 16:
-        difficulty = 'Expert (16x30)'
-    else:
-        raise ValueError("Difficulty not recognised from config {}".format(config))
-
-    return difficulty
-
-def createTasksFromParameters(agent_parameters, other_parameters, batch_size=50):
-    ''' Batch size is the number of games to play for a task. '''
-    # Create game seeds for entire run on this combination of parameters
-    num_games = other_parameters['num_games']
-    run_seed = other_parameters['seed']
-    game_seeds = minesweeper.create_game_seeds(num_games, run_seed)
-    
-    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
-    method = minesweeper.run
-    args = (solver_agent, )
-    tasks = []
-
-    # Batch game seeds and put them into tasks
-    for seed_batch in more_itertools.chunked(game_seeds, batch_size):
-        kwargs = copy(other_parameters)     # Ensure each task uses a different kwargs after modification
-        kwargs['game_seeds'] = seed_batch
-
-        task = (method, args, kwargs)
-        tasks.append(task)
-
-    return tasks
-
-def createTasksFromSplitParameterGrid(parameter_grid, games_batch_size):
-    tasks_info = []
-
-    for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
-        tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=games_batch_size)
-        
-        # Sticking on the parameters_id to each task so the results from all the tasks 
-        # can more easily be grouped by their parameters
-        for task in tasks:
-            task_info = (parameters_id, task)
-            tasks_info.append(task_info)
-
-    return tasks_info
 
 def appendToFileName(name, suffix):
     (name, ext) = os.path.splitext(name)
@@ -221,12 +217,20 @@ def packageTaskResults(results, task_info):
 
     return results
 
-def saveResultsToCsv(experiment, results):
-    output_file_name = experiment['title']
-    saveDictRowsAsCsv(results, output_file_name)
+def configToDifficultyString(config):
+    if config['columns'] == 9 and config['rows'] == 9:
+        difficulty = 'Beginner (9x9)'
+    elif config['columns'] == 16 and config['rows'] == 16:
+        difficulty = 'Intermediate (16x16)'
+    elif config['columns'] == 30 and config['rows'] == 16:
+        difficulty = 'Expert (16x30)'
+    else:
+        raise ValueError("Difficulty not recognised from config {}".format(config))
+
+    return difficulty
 
 def getExperimentTEST():
-    ''' Purpose: like experiment0 but just for testing this script & has few games'''
+    ''' Purpose: like experiment1 but just for testing this script & has few games'''
         
     title = "T to the E to the ST"
 
@@ -253,22 +257,27 @@ def getExperimentTEST():
             ],
         },
         'constant': {
-            'num_games': 100,
+            'num_games': 2,
             'seed': 57,
             'verbose': False,
             'visualise': False,  
         }
     }
 
+    task_handler = completeTaskAndReturnExtendedResults
+    on_finish = saveResultsToCsv
+
     experiment = {
         'title': title,
         'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
+        'other_parameters': other_parameters,
+        'task_handler': task_handler,
+        'on_finish': on_finish
     }
 
     return experiment
 
-def getExperiment0():
+def getExperiment1():
     ''' Purpose: A very short experiment (<1 hour) to verify that the solver's win rate is as expected for each difficulty
         using the full grid as its sample size (this is compared to other existing solvers that also play all safe moves
         that can be deduced first).
@@ -283,7 +292,7 @@ def getExperiment0():
         have on the win rate, if any.
     '''
         
-    title = "Solver verification experiment"
+    title = "Solver Verification Experiment"
 
     agent_parameters = {
         'variable': {
@@ -315,15 +324,20 @@ def getExperiment0():
         }
     }
 
+    task_handler = completeTaskAndReturnExtendedResults
+    on_finish = saveResultsToCsv
+
     experiment = {
         'title': title,
         'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
+        'other_parameters': other_parameters,
+        'task_handler': task_handler,
+        'on_finish': on_finish
     }
 
     return experiment
 
-def getExperiment1():
+def getExperiment2():
     ''' Purpose: A short experiment (~1 day or less) to do the following main things, among others: 
                  1. Verify no-unecessary-guess solver works as intended by checking the solver gets the expected win rates for each difficulties (full grid, no guess).
                  2. Try out numerous sample sizes with/without mine count constraint so as to give an indication of what the win rates look like for them (to help choose
@@ -331,7 +345,7 @@ def getExperiment1():
                  3. Provide measurements of how long it takes to play a certain number of games for specific parameter combos, allowing for a reasonable estimate
                     of the total run time to be made for any subsequent bigger solver experiments. '''
         
-    title = "experiment 1 (the short one)"
+    title = "Short Experiment"
 
     agent_parameters = {
         'variable': {
@@ -360,10 +374,15 @@ def getExperiment1():
         }
     }
 
+    task_handler = completeTaskAndReturnExtendedResults
+    on_finish = saveResultsToCsv
+
     experiment = {
         'title': title,
         'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
+        'other_parameters': other_parameters,
+        'task_handler': task_handler,
+        'on_finish': on_finish
     }
 
     return experiment
@@ -396,10 +415,16 @@ def getExperiment3():
         }
     }
 
+    raise NotImplementedError("Need to link this experiment to database first")
+    task_handler = None
+    on_finish = None
+
     experiment = {
         'title': title,
         'agent_parameters': agent_parameters,
-        'other_parameters': other_parameters
+        'other_parameters': other_parameters,
+        'task_handler': task_handler,
+        'on_finish': on_finish
     }
 
     return experiment
