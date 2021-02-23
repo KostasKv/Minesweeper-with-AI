@@ -1,0 +1,13 @@
+wins,wins_without_guess,time_elapsed,samples_considered,samples_with_solutions,difficulty,sample_size,use_num_mines_constraint,first_click_pos,first_click_is_zero
+954,869,39.32709574699402,4287,4080,Beginner (9x9),11x11,True,,True
+805,434,60.02659296989441,4396,3160,Beginner (9x9),11x11,True,,False
+857,727,247.80614233016968,7929,7594,Intermediate (16x16),18x18,True,,True
+582,174,516.1734690666199,7399,5098,Intermediate (16x16),18x18,True,,False
+341,133,1808.633507013321,19165,17050,Expert (16x30),18x32,True,,True
+171,28,1917.0326344966888,11636,8063,Expert (16x30),18x32,True,,False
+962,907,20.591041088104248,3251,3155,Beginner (9x9),11x11,True,"(3, 3)",True
+779,312,56.08636784553528,4248,2858,Beginner (9x9),11x11,True,"(3, 3)",False
+869,738,238.28123569488525,8510,8146,Intermediate (16x16),18x18,True,"(3, 3)",True
+591,192,443.84887194633484,7590,5347,Intermediate (16x16),18x18,True,"(3, 3)",False
+352,140,1587.068072795868,19622,17444,Expert (16x30),18x32,True,"(3, 3)",True
+167,19,1692.3319897651672,11586,7977,Expert (16x30),18x32,True,"(3, 3)",False
