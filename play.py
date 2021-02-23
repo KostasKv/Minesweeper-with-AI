@@ -61,9 +61,9 @@ if __name__ == '__main__':
                     results.append(result)
                     print("Time taken: {}s\n".format(end - start))
     if not benchmark and not profile:
-        minesweeper.run(verbose=0, config=config, seed=57, visualise=True)
+        # minesweeper.run(verbose=0, config=config, seed=57, visualise=True)
         # run(random_agent, config=config, verbose=True, visualise=True)
         # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
-        # results = minesweeper.run(solver_agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
+        results = minesweeper.run(solver_agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
     print("Program stopped.")

@@ -28,7 +28,7 @@ def runExperiment(experiment, batch_size):
 
     # Run experiment using all CPU cores available
     with Pool(processes=CPUs_available) as p:
-        all_results = list(tqdm(p.imap(task_handler, tasks_info), total=len(tasks_info)))
+        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -257,7 +257,7 @@ def getExperimentTEST():
             ],
         },
         'constant': {
-            'num_games': 2,
+            'num_games': 50,
             'seed': 57,
             'verbose': False,
             'visualise': False,  
@@ -350,24 +350,27 @@ def getExperiment2():
     agent_parameters = {
         'variable': {
             'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
-            'use_num_mines_constraint': [True, False],
+            'use_num_mines_constraint': [True, False]
         },
         'constant': {
             'seed': 14,
-            'first_click_pos': None,
+            'first_click_pos': None
         }
     }
 
     other_parameters = {
         'variable': {
             'config': [
-                {'rows': 9, 'columns': 9, 'num_mines': 10},
-                {'rows': 16, 'columns': 16, 'num_mines': 40},
-                {'rows': 16, 'columns': 30, 'num_mines': 99}
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
             ],
         },
         'constant': {
-            'num_games': 1000,
+            'num_games': 2,
             'seed': 57,
             'verbose': False,
             'visualise': False,  
