@@ -67,4 +67,8 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10}, num_games=10
         renderer = NoScreenRenderer(config, game.grid, agent)
 
     return playGames(executor, renderer, verbose)
-    
+
+def create_game_seeds(num_games, run_seed):
+    ''' Creates a batch of game seeds from a given game configuration and run seed.
+        This method exposes the internal method for creating game seeds. '''
+    return _Executor.create_game_seeds(num_games, run_seed)

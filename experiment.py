@@ -2,10 +2,13 @@ import time
 from datetime import timedelta
 import os
 import csv
+from multiprocessing import Pool
+from copy import copy
 
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
 from tqdm import tqdm
+import more_itertools
 
 from minesweeper_ai import minesweeper
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
@@ -14,7 +17,94 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'data')
 output_path_main = None
 output_path_constants = None
-all_results = []
+
+
+def main():
+    # experiment = getExperiment2()
+    experiment = getExperimentTEST()
+    runExperiment(experiment, task_handler=completeTaskAndReturnExtendedResults, experiment_finish_callback=saveResultsToCsv, games_batch_size=10)
+
+def runExperiment(experiment, task_handler, experiment_finish_callback, games_batch_size=50):
+    (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, games_batch_size)
+
+    CPUs_available = os.cpu_count()
+
+    # Run experiment using all CPU cores available
+    with Pool(processes=CPUs_available) as p:
+        all_results = list(tqdm(p.imap(task_handler, tasks_info), total=len(tasks_info)))
+
+    # # Save experiment constants info as seperate file
+    # constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
+    # saveDictRowsAsCsv([constants], constants_output_file_name)
+
+    experiment_finish_callback(experiment, all_results)
+
+def experimentPrepAndGetTasksAndConstants(experiment, games_batch_size):
+    print("Preparing experiment '{}'...".format(experiment['title']), end="")
+
+    parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
+    num_combinations = len(parameter_grid)
+    num_games = constants['num_games']
+    tasks = createTasksFromSplitParameterGrid(parameter_grid, games_batch_size)
+
+    # Display start-of-experiment info
+    print(" DONE")
+    print("Running {} games for each of {} different parameter combinations...\n".format(num_games, num_combinations))
+    print("Total games: {}   Batch size: {}   Total tasks: {}".format((num_games * num_combinations), games_batch_size, len(tasks)))
+    return (tasks, constants)
+
+def getSplitParameterGridAndConstants(experiment):
+    agent_variables = experiment['agent_parameters']['variable']
+    other_variables = experiment['other_parameters']['variable']
+    agent_constants = experiment['agent_parameters']['constant']
+    other_constants = experiment['other_parameters']['constant']
+
+    if agent_variables is None:
+        agent_variables = {}
+    if other_variables is None:
+        other_variables = {}
+    if agent_constants is None:
+        agent_constants = {}
+    if other_constants is None:
+        other_constants = {}
+     
+    variables = {}
+
+    # Adding prefixes to distinguish between same-name variables from the two dicts
+    for (key, value) in agent_variables.items():
+        new_key = 'agent_' + key
+        variables[new_key] = value
+
+    for (key, value) in other_variables.items():
+        new_key = 'other_' + key
+        variables[new_key] = value
+
+    variables_parameter_grid = ParameterGrid(variables)
+    split_parameter_grid_with_constants = []
+    
+    # Split each parameter combination dict in grid into tuple of 2 dicts, where the former
+    # contains all the agent parameters, and the latter all the others. Including constants.
+    for (i, parameters_combo) in enumerate(variables_parameter_grid):
+        agent_parameters = {**agent_constants}
+        other_parameters = {**other_constants}
+
+        for (key, value) in parameters_combo.items():
+            (prefix, real_key) = key.split('_', 1)
+
+            if prefix == 'agent':
+                agent_parameters[real_key] = value
+            else:
+                other_parameters[real_key] = value
+        
+        split_parameter_grid_with_constants.append((agent_parameters, other_parameters))
+
+    # lazy patch for 'seed' being called same thing in both dicts
+    constants = {**agent_constants, **other_constants}
+    constants.pop('seed')
+    constants['agent_seed'] = agent_constants['seed']
+    constants['run_seed'] = other_constants['seed']
+
+    return (split_parameter_grid_with_constants, constants)
 
 def saveDictRowsAsCsv(dict_rows, file_name):
     ''' Each dict should represent a row where the keys are the field names for the CSV file.
@@ -71,129 +161,112 @@ def configToDifficultyString(config):
 
     return difficulty
 
-def createTaskFromParameters(agent_parameters, other_parameters):
-    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
+def createTasksFromParameters(agent_parameters, other_parameters, batch_size=50):
+    ''' Batch size is the number of games to play for a task. '''
+    # Create game seeds for entire run on this combination of parameters
+    num_games = other_parameters['num_games']
+    run_seed = other_parameters['seed']
+    game_seeds = minesweeper.create_game_seeds(num_games, run_seed)
     
+    solver_agent = NoUnnecessaryGuessSolver(**agent_parameters)
     method = minesweeper.run
     args = (solver_agent, )
-    kwargs = other_parameters
-
-    return (method, args, kwargs)
-
-def createTasksFromSplitParameterGrid(parameter_grid):
     tasks = []
 
-    for (i, (agent_parameters, other_parameters)) in enumerate(parameter_grid):
-        task = createTaskFromParameters(agent_parameters, other_parameters)
+    # Batch game seeds and put them into tasks
+    for seed_batch in more_itertools.chunked(game_seeds, batch_size):
+        kwargs = copy(other_parameters)     # Ensure each task uses a different kwargs after modification
+        kwargs['game_seeds'] = seed_batch
+
+        task = (method, args, kwargs)
         tasks.append(task)
 
     return tasks
 
-def completeTask(task, callback):
-    (method, args, kwargs) = task
-    results = method(*args, **kwargs)
-    callback(results, task)
+def createTasksFromSplitParameterGrid(parameter_grid, games_batch_size):
+    tasks_info = []
+
+    for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
+        tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=games_batch_size)
+        
+        # Sticking on the parameters_id to each task so the results from all the tasks 
+        # can more easily be grouped by their parameters
+        for task in tasks:
+            task_info = (parameters_id, task)
+            tasks_info.append(task_info)
+
+    return tasks_info
 
 def appendToFileName(name, suffix):
     (name, ext) = os.path.splitext(name)
     return name + suffix + ext
 
-def onTaskCompleteStoreResultsInGlobal(results, task):
-    global all_results
+def completeTaskAndReturnExtendedResults(task_info):
+    (method, args, kwargs) = task_info[1]                  # unpack
+    results = method(*args, **kwargs)                 # run task
+    return packageTaskResults(results, task_info)
 
+def packageTaskResults(results, task_info):
+    ''' Extends task's results with extra information. '''
+    (parameters_id, task) = task_info
     _, args, kargs = task
     agent = args[0]
 
-    # Append extra info to the task results before storing
     results['difficulty'] = configToDifficultyString(kargs['config'])
-    results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE)    # represent sample size tuple (A, B) as string 'AxB'. Easier to parse from csv imo.
+    results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE) # represent sample size (A, B) as string 'AxB'. Bit easier to understand.
     results['use_num_mines_constraint'] = agent.use_num_mines_constraint
     results['first_click_pos'] = agent.first_click_pos
     results['first_click_is_zero'] = kargs['config']['first_click_is_zero']
+    results['parameters_id'] = parameters_id
 
-    all_results.append(results)
+    return results
 
-def saveExperimentResultsFromGlobalToCsv(experiment):
-    global all_results
+def saveResultsToCsv(experiment, results):
     output_file_name = experiment['title']
-    saveDictRowsAsCsv(all_results, output_file_name)
+    saveDictRowsAsCsv(results, output_file_name)
 
-def getSplitParameterGridAndConstants(experiment):
-    agent_variables = experiment['agent_parameters']['variable']
-    other_variables = experiment['other_parameters']['variable']
-    agent_constants = experiment['agent_parameters']['constant']
-    other_constants = experiment['other_parameters']['constant']
-
-    if agent_variables is None:
-        agent_variables = {}
-    if other_variables is None:
-        other_variables = {}
-    if agent_constants is None:
-        agent_constants = {}
-    if other_constants is None:
-        other_constants = {}
-     
-    variables = {}
-
-    # Adding prefixes to distinguish between same-name variables from the two dicts
-    for (key, value) in agent_variables.items():
-        new_key = 'agent_' + key
-        variables[new_key] = value
-
-    for (key, value) in other_variables.items():
-        new_key = 'other_' + key
-        variables[new_key] = value
-
-    variables_parameter_grid = ParameterGrid(variables)
-    split_parameter_grid_with_constants = []
-    
-    # Split each parameter combination dict in grid into tuple of 2 dicts, where the former
-    # contains all the agent parameters, and the latter all the others. Including constants.
-    for (i, parameters_combo) in enumerate(variables_parameter_grid):
-        agent_parameters = {**agent_constants}
-        other_parameters = {**other_constants}
-
-        for (key, value) in parameters_combo.items():
-            (prefix, real_key) = key.split('_', 1)
-
-            if prefix == 'agent':
-                agent_parameters[real_key] = value
-            else:
-                other_parameters[real_key] = value
+def getExperimentTEST():
+    ''' Purpose: like experiment0 but just for testing this script & has few games'''
         
-        split_parameter_grid_with_constants.append((agent_parameters, other_parameters))
+    title = "T to the E to the ST"
 
-    # lazy patch for 'seed' being called same thing in both dicts
-    constants = {**agent_constants, **other_constants}
-    constants.pop('seed')
-    constants['agent_seed'] = agent_constants['seed']
-    constants['run_seed'] = other_constants['seed']
+    agent_parameters = {
+        'variable': {
+            'first_click_pos': [None, (3, 3)]
+        },
+        'constant': {
+            'seed': 14,
+            'sample_size': None,  # Sample size None means use full grid
+            'use_num_mines_constraint': True,
+        }
+    }
 
-    return (split_parameter_grid_with_constants, constants)
+    other_parameters = {
+        'variable': {
+            'config': [
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
+            ],
+        },
+        'constant': {
+            'num_games': 100,
+            'seed': 57,
+            'verbose': False,
+            'visualise': False,  
+        }
+    }
 
-def runExperiment(experiment, task_finish_callback, experiment_finish_callback):
-    print("Preparing experiment '{}'...".format(experiment['title']), end="")
+    experiment = {
+        'title': title,
+        'agent_parameters': agent_parameters,
+        'other_parameters': other_parameters
+    }
 
-    # Prep
-    parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
-    tasks = createTasksFromSplitParameterGrid(parameter_grid)
-    
-    # Save experiment info
-    constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
-    saveDictRowsAsCsv([constants], constants_output_file_name)
-
-    # Print start-of-experiment info
-    num_combinations = len(parameter_grid)
-    num_games = constants['num_games']
-    print(" DONE")
-    print("Running {} games ({} overall) for {} different parameter combinations...".format(num_games, (num_games * num_combinations), num_combinations))
-
-    # Run experiment
-    for task in tqdm(tasks, desc="Tasks complete", unit="task"):
-        completeTask(task, callback=task_finish_callback)
-
-    # End of experiment
-    experiment_finish_callback(experiment)
+    return experiment
 
 def getExperiment0():
     ''' Purpose: A very short experiment (<1 hour) to verify that the solver's win rate is as expected for each difficulty
@@ -295,12 +368,14 @@ def getExperiment1():
 
     return experiment
 
-def getExperiment2():
-    title = "experiment 2"
+def getExperiment3():
+    title = "Main Experiment"
 
     agent_parameters = {
         'variable': {
-            'first_click_pos': [None, (2, 2)]
+            'first_click_pos': [None, (2, 2)],
+            'first_click_is_zero': [True, False],
+            
         },
         'constant': {
             'sample_size': None,  # Sample size None means use full grid
@@ -330,5 +405,4 @@ def getExperiment2():
     return experiment
 
 if __name__ == '__main__':
-    experiment = getExperiment0()
-    runExperiment(experiment, task_finish_callback=onTaskCompleteStoreResultsInGlobal, experiment_finish_callback=saveExperimentResultsFromGlobalToCsv)
+    main()

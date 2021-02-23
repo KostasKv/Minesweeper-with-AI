@@ -10,7 +10,7 @@ class _Executor():
 
         if num_games:
             self._new_games_left = num_games
-            self.game_seeds = self._get_game_seeds(num_games, seed)
+            self.game_seeds = self.create_game_seeds(num_games, seed)
         else:
             self._new_games_left = len(game_seeds)
             self.game_seeds = iter(game_seeds)
@@ -20,7 +20,8 @@ class _Executor():
         self._start_new_game()
         self._all_games_finished = False
 
-    def _get_game_seeds(self, num_games, seed):
+    @staticmethod
+    def create_game_seeds(num_games, seed):
         GAME_SEED_RANGE_INCLUSIVE = (-(2**63), 2**63 - 1)   # 64-bit signed integer range
         random_generator = Random(seed)
 
