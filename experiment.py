@@ -16,7 +16,7 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 def main():
     experiment = getExperiment2()
-    games_batch_size = 10
+    games_batch_size = 1000
     runExperiment(experiment, games_batch_size)
 
 def runExperiment(experiment, batch_size):
@@ -76,7 +76,7 @@ def getSplitParameterGridAndConstants(experiment):
     
     # Split each parameter combination dict in grid into tuple of 2 dicts, where the former
     # contains all the agent parameters, and the latter all the others. Including constants.
-    for (i, parameters_combo) in enumerate(variables_parameter_grid):
+    for parameters_combo in variables_parameter_grid:
         agent_parameters = {**agent_constants}
         other_parameters = {**other_constants}
 
@@ -277,21 +277,14 @@ def getExperimentTEST():
     return experiment
 
 def getExperiment1():
-    ''' Purpose: A very short experiment (<1 hour) to verify that the solver's win rate is as expected for each difficulty
-        using the full grid as its sample size (this is compared to other existing solvers that also play all safe moves
-        that can be deduced first).
-
-        Expected win rates (no guesses) are as follows:
-        - ~92% Beginner
-        - ~72% Intermediate
-        - ~16% Expert 
+    ''' Expected Duration: ~2 hours
         
-        A select few factors are varied as they may have an impact on the win rate. Each combination is tried in the hopes
-        of finding the set of results that are comparable to other existing solvers, and also to see how large of an impact they
-        have on the win rate, if any.
+        Purpose: The rule of whether first-click is a zero tile, and first-click's position (random or fixed) seems
+        to affect the win rate. Each combination is tried to see how large of an effect they have and how these
+        compare to the existing solvers.
     '''
         
-    title = "Solver Verification Experiment"
+    title = "First-click variation experiment"
 
     agent_parameters = {
         'variable': {
@@ -337,23 +330,30 @@ def getExperiment1():
     return experiment
 
 def getExperiment2():
-    ''' Purpose: A short experiment (~1 day or less) to do the following main things, among others: 
-                 1. Verify no-unecessary-guess solver works as intended by checking the solver gets the expected win rates for each difficulties (full grid, no guess).
-                 2. Try out numerous sample sizes with/without mine count constraint so as to give an indication of what the win rates look like for them (to help choose
-                    which sample sizes to test in a bigger solver experiment with many more games).
-                 3. Provide measurements of how long it takes to play a certain number of games for specific parameter combos, allowing for a reasonable estimate
-                    of the total run time to be made for any subsequent bigger solver experiments. '''
-        
-    title = "Short Experiment"
+    ''' Purpose: Twofold:
+            1. Measure how the win rate converges as more games are played (to give an estimate of how many games
+               need to be played by the main experiment per parameter combo for precise results)
+            2. Verify that the solver's win rate is the rate expected for each difficulty
+               using the full grid as its sample size (expected win rate comes from existing solvers that also initially
+               exhaust all definitely-safe moves that can be deduced).
+
+        Expected win rates (no guesses) are as follows:
+        - ~92% Beginner
+        - ~72% Intermediate
+        - ~16% Expert 
+    '''
+
+    title = "Solver verification experiment"
 
     agent_parameters = {
         'variable': {
-            'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
-            'use_num_mines_constraint': [True, False]
+            
         },
         'constant': {
-            'seed': 14,
-            'first_click_pos': None
+            'seed': 20,
+            'sample_size': None,  # Sample size None means use full grid
+            'use_num_mines_constraint': True,
+            'first_click_pos': (3, 3),
         }
     }
 
@@ -361,16 +361,13 @@ def getExperiment2():
         'variable': {
             'config': [
                 {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
-                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
                 {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
-                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
                 {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
-                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
             ],
         },
         'constant': {
-            'num_games': 1000,
-            'seed': 57,
+            'num_games': 50000,
+            'seed': 2020,
             'verbose': False,
             'visualise': False,  
         }
@@ -389,8 +386,61 @@ def getExperiment2():
 
     return experiment
 
+
 def getExperiment3():
-    title = "Main Experiment"
+    ''' Purpose: A short experiment (~1 day or less) to do the following main things, among others: 
+                 1. Try out numerous sample sizes with/without mine count constraint so as to give an indication of what the win rates look like for them (to help choose
+                    which sample sizes to test in a bigger solver experiment with many more games).
+                 2. Provide measurements of how long it takes to play a certain number of games for specific parameter combos, allowing for a reasonable estimate
+                    of the total run time to be made for any subsequent bigger solver experiments. '''
+        
+    title = "Short broad experiment"
+
+    agent_parameters = {
+        'variable': {
+            'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
+            'use_num_mines_constraint': [True, False]
+        },
+        'constant': {
+            'seed': 2020,
+            'first_click_pos': None
+        }
+    }
+
+    other_parameters = {
+        'variable': {
+            'config': [
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
+            ],
+        },
+        'constant': {
+            'num_games': 1000,
+            'seed': 20,
+            'verbose': False,
+            'visualise': False,  
+        }
+    }
+
+    task_handler = completeTaskAndReturnExtendedResults
+    on_finish = saveResultsToCsv
+
+    experiment = {
+        'title': title,
+        'agent_parameters': agent_parameters,
+        'other_parameters': other_parameters,
+        'task_handler': task_handler,
+        'on_finish': on_finish
+    }
+
+    return experiment
+
+def getExperiment4():
+    title = "Main experiment"
 
     agent_parameters = {
         'variable': {
@@ -430,6 +480,7 @@ def getExperiment3():
     }
 
     return experiment
+
 
 if __name__ == '__main__':
     main()
