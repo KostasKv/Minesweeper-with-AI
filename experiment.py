@@ -2,12 +2,13 @@ import time
 from datetime import timedelta
 import os
 import csv
-from multiprocessing import Pool
+from multiprocessing import Pool, current_process
 from copy import copy
 
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
 from tqdm import tqdm
+import psutil
 import more_itertools
 
 from minesweeper_ai import minesweeper
@@ -23,10 +24,15 @@ def runExperiment(experiment, batch_size):
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size)
 
     task_handler = experiment['task_handler']
-    CPUs_available = os.cpu_count()
+
+    # Ought to try a quick benchmark to test between using as workers as logical v physical cores.
+    # Also, what about N-1 cores (each for physical & logical)?
+
+    # logical_cores_available = psutil.cpu_count(logical=True)
+    physical_cores_available = psutil.cpu_count(logical=False)
 
     # Run experiment using all CPU cores available
-    with Pool(processes=CPUs_available) as p:
+    with Pool(processes=physical_cores_available) as p:
         all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
 
     onEndOfExperiment(experiment, all_results, constants)
@@ -99,18 +105,17 @@ def getSplitParameterGridAndConstants(experiment):
     return (split_parameter_grid_with_constants, constants)
 
 def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
-    tasks_info = []
+    batched_tasks_grouped_by_parameter = []
 
     for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
         tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=batch_size)
         
         # Sticking on the parameters_id to each task so the results from all the tasks 
         # can more easily be grouped by their parameters
-        for task in tasks:
-            task_info = (parameters_id, task)
-            tasks_info.append(task_info)
+        tasks_with_param_id = [(parameters_id, task) for task in tasks]
+        batched_tasks_grouped_by_parameter.append(tasks_with_param_id)
 
-    return tasks_info
+    return zip(batched_tasks_grouped_by_parameter)
 
 def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
     ''' Batch size is the number of games to play for a task. '''
@@ -196,12 +201,28 @@ def appendToFileName(name, suffix):
     (name, ext) = os.path.splitext(name)
     return name + suffix + ext
 
-def completeTaskAndReturnExtendedResults(task_info):
+def store_results_in_database_on_task_finish(task_info):
+    ''' Warning: Only for use with main experiment! Not configured to work for
+        any other experiment.'''
+    DEBUG_processor_num_at_task_start = current_process().pid
+    
     (method, args, kwargs) = task_info[1]                  # unpack
     results = method(*args, **kwargs)                 # run task
-    return packageTaskResults(results, task_info)
 
-def packageTaskResults(results, task_info):
+    DEBUG_processor_num_at_task_end = current_process().pid
+    print(f"PID start: {DEBUG_processor_num_at_task_start}\tend: {DEBUG_processor_num_at_task_end}")
+
+    return store_task_results_in_database(results, task_info)
+
+def store_task_results_in_database(results, task_info):
+    raise NotImplementedError("Storing results in database on task finish not yet done.")
+
+def complete_task_and_return_results_including_game_info(task_info):
+    (method, args, kwargs) = task_info[1]                  # unpack
+    results = method(*args, **kwargs)                 # run task
+    return add_extra_info_to_task_results(results, task_info)
+
+def add_extra_info_to_task_results(results, task_info):
     ''' Extends task's results with extra information. '''
     (parameters_id, task) = task_info
     _, args, kargs = task
@@ -265,7 +286,7 @@ def getExperimentTEST():
         }
     }
 
-    task_handler = completeTaskAndReturnExtendedResults
+    task_handler = complete_task_and_return_results_including_game_info
     on_finish = saveResultsToCsv
 
     experiment = {
@@ -318,7 +339,7 @@ def getExperiment1():
         }
     }
 
-    task_handler = completeTaskAndReturnExtendedResults
+    task_handler = complete_task_and_return_results_including_game_info
     on_finish = saveResultsToCsv
 
     experiment = {
@@ -375,7 +396,7 @@ def getExperiment2():
         }
     }
 
-    task_handler = completeTaskAndReturnExtendedResults
+    task_handler = complete_task_and_return_results_including_game_info
     on_finish = saveResultsToCsv
 
     experiment = {
@@ -428,7 +449,7 @@ def getExperiment3():
         }
     }
 
-    task_handler = completeTaskAndReturnExtendedResults
+    task_handler = complete_task_and_return_results_including_game_info
     on_finish = saveResultsToCsv
 
     experiment = {
@@ -477,7 +498,7 @@ def getExperiment4():
     }
 
     raise NotImplementedError("Need to link this experiment to database first")
-    task_handler = None
+    task_handler = store_results_in_database_on_task_finish
     on_finish = None
 
     experiment = {
