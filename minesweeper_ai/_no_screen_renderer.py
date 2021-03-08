@@ -33,5 +33,4 @@ class NoScreenRenderer(Renderer):
 
     def onEndOfGames(self):
         ''' Return game statistics '''
-        return {'samples_considered': self.agent.sample_count,
-                'samples_with_solutions': self.agent.samples_with_solution_count}
+        return self.agent.get_stats()

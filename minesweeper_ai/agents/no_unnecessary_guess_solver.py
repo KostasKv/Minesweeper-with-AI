@@ -2,6 +2,7 @@ from random import Random
 from itertools import chain, combinations
 from iteration_utilities import deepflatten
 from copy import copy
+import time
 
 from .cp_solver import CpSolver
 
@@ -25,10 +26,31 @@ class NoUnnecessaryGuessSolver(Agent):
 
         self.sample_count = 0
         self.samples_with_solution_count = 0
-        self.had_to_guess_this_game = False
+        self.num_guesses_for_game = 0
         self.last_move_was_sure_move = None
+        self.turns_this_game_stats = []
+        self.new_sps_mine_solutions = 0
+        self.new_sps_no_mine_solutions = 0
+        self.new_brute_mine_solutions = 0
+        self.new_brute_no_mine_solutions = 0
+        self.turn_samples_stats = []
+
+
 
     def nextMove(self):
+        # Decide move and time it
+        turn_start_time = time.time()
+        move = self.decideNextMove()
+        turn_end_time = time.time()
+        
+        # Keep track of turn stats
+        turn_decision_time = turn_end_time - turn_start_time
+        turn_stats = self.updateTurnsStats(turn_decision_time)
+        self.turns_this_game_stats.append(turn_stats)
+        
+        return move
+
+    def decideNextMove(self):
         if self.game_state == _Game.State.START:
             move = self.getFirstMove()
             self.last_move_was_sure_move = False
@@ -49,10 +71,35 @@ class NoUnnecessaryGuessSolver(Agent):
                 self.last_move_was_sure_move = True
             else:
                 move = self.clickRandom()
-                self.had_to_guess_this_game = True
                 self.last_move_was_sure_move = False
-        
+                self.num_guesses_for_game += 1
+
         return move
+
+    def updateTurnsStats(self, turn_decision_time):
+        turn_stats_to_store = {
+            'turn_number': len(self.turns_this_game_stats) + 1,
+            'seconds_to_decide_move': turn_decision_time,
+            'samples_considered': len(self.turn_samples_stats),
+            'mine_count': self.mines_left,
+            'new_sps_mine_solutions': self.new_sps_mine_solutions,
+            'new_sps_no_mine_solutions': self.new_sps_no_mine_solutions,
+            'new_brute_mine_solutions': self.new_brute_mine_solutions,
+            'new_brute_no_mine_solutions': self.new_brute_no_mine_solutions,
+            'tiles_already_uncovered_on_grid': self.count_num_uncovered_tiles(self.grid),
+            'samples': self.turn_samples_stats,
+        }
+
+        # turn_extra_stats = {
+        #     'samples_considered': len(self.turn_samples_stats),
+        #     'samples': self.turn_samples_stats,
+        # }
+        
+        # # Appends extra stats to existing turn stats
+        # turn_stats = {**self.turn_stats, **turn_extra_stats}
+        
+        # return self.turns_this_game_stats + [turn_stats]
+        return turn_stats_to_store
 
     def getFirstMove(self):
         if self.first_click_pos is None:
@@ -216,25 +263,99 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
-
+        
+        sps_start = time.time()
         sps_sure_moves = self.singlePointStrategy(sample)
+        sps_end = time.time()
+        sps_duration = sps_end - sps_start
+
         disjoint_sections = self.getDisjointSections(sample)
 
         if disjoint_sections:
+            brute_start = time.time()
             if self.use_num_mines_constraint:
                 brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left, sps_sure_moves)
             else:
                 brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves) 
+            brute_end = time.time()
+            brute_duration = brute_end - brute_start
         else:
             brute_sure_moves = set()
+            brute_duration = 0
+        
 
-        sure_moves = sps_sure_moves | brute_sure_moves
+        self.sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
 
-        if sure_moves:
-            sure_moves = self.sampleMovesToGridMoves(sure_moves, sample_pos)
-            sure_moves = self.pruneIllegalSureMoves(sure_moves)
+        # Translate sure-moves coords from sample-relative coords to actual grid coords
+        # and get rid of 'discovered' moves that have already been played 
+        sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
+        brute_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=True) 
 
-        return sure_moves
+        new_sure_moves = sps_sure_moves | brute_sure_moves
+        return new_sure_moves
+
+    def get_sample_stats(self, sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections):
+        sps_move_counts = self.count_up_moves_based_on_strategy(sps_sure_moves, is_brute_moves=False)
+        brute_move_counts = self.count_up_moves_based_on_strategy(sps_sure_moves, is_brute_moves=False)
+        has_wall, _ = self.check_if_sample_has_wall(sample)
+
+        sample_stats = {
+            'sps_mine_solutions': sps_move_counts['mine_solutions'],
+            'sps_no_mine_solutions': sps_move_counts['no_mine_solutions'],
+            'brute_mine_solutions': brute_move_counts['mine_solutions'],
+            'brute_no_mine_solutions': brute_move_counts['no_mine_solutions'],
+            'sps_seconds_elapsed': sps_duration,
+            'brute_seconds_elapsed': brute_duration,
+            'disjoint_sections_sizes': self.get_disjoint_section_sizes(disjoint_sections),
+            'tiles_already_uncoverd_in_sample': self.count_num_uncovered_tiles(sample),
+            'has_wall': has_wall
+        }
+
+        return sample_stats
+
+    @staticmethod
+    def get_disjoint_section_sizes(disjoint_sections):
+        raise NotImplementedError("Still need to encode sizes of disjoint sections as described by data model")
+
+    @staticmethod
+    def count_num_uncovered_tiles(tiles):
+        return sum(1 for row in tiles for tile in row if tile.uncovered)
+        
+
+    def translate_and_prune_sure_moves(self, moves, sample_pos, is_brute_moves):
+        if moves:
+            moves = self.sampleMovesToGridMoves(moves, sample_pos)
+            moves = self.pruneIllegalSureMoves(moves)
+
+        # update turn stats    
+        moves_counts = self.count_up_moves_based_on_strategy(moves, is_brute_moves)
+
+        if is_brute_moves:
+            self.new_brute_mine_solutions = moves_counts['mine_solutions']
+            self.new_brute_no_mine_solutions = moves_counts['no_mine_solutions']
+        else:
+            self.new_sps_mine_solutions = moves_counts['mine_solutions']
+            self.new_sps_no_mine_solutions = moves_counts['no_mine_solutions']
+
+        return moves
+
+    def count_up_moves_based_on_strategy(self, moves, is_brute_moves):
+        answers = {
+            'sps_mine_solutions': 0,
+            'sps_no_mine_solutions': 0,
+            'brute_mine_solutions': 0,
+            'brute_no_mine_solutions': 0,
+        }
+
+        for move in moves:
+            (_, _, is_mine) = move
+            
+            if is_mine:
+                answers['mine_solutions'] += 1
+            else:
+                answers['no_mine_solutions'] += 1
+
+        return answers
 
     def singlePointStrategy(self, sample):
         adjacent_info = list(self.getTilesAndAdjacentsOfInterestForSPS(sample))
@@ -355,6 +476,28 @@ class NoUnnecessaryGuessSolver(Agent):
         return (tiles_outside_sample_surrounding, num_unknown_outside_sample, num_unknown_inside_sample)
 
     def getNumTilesOutsideSampleSurroundingAndNumUnknownSurroundingSample(self, sample):
+        (has_wall, non_wall_tiles_in_sample) = self.check_if_sample_has_wall(sample)
+        
+        t = int(has_wall['top'])
+        r = int(has_wall['right'])
+        b = int(has_wall['bottom'])
+        l = int(has_wall['left'])
+
+        # Calculate how many non-wall tiles are in and around sample
+        non_wall_width = len(sample[0]) + 2 - (2 * (l + r))
+        non_wall_height = len(sample) + 2 - (2 * (t + b))
+        tiles_inside_sample_and_surrounding = non_wall_width * non_wall_height
+
+        # Calculate how many tiles are outside sample and its surrounding area
+        total_tiles_in_grid = len(self.grid[0]) * len(self.grid)
+        tiles_outside_sample_surrounding = max(total_tiles_in_grid - tiles_inside_sample_and_surrounding, 0)
+
+        unknown_tiles_surrounding_sample = tiles_inside_sample_and_surrounding - non_wall_tiles_in_sample
+
+        return (tiles_outside_sample_surrounding, unknown_tiles_surrounding_sample)
+
+    @staticmethod
+    def check_if_sample_has_wall(sample):
         non_wall_tiles_in_sample = 0
         top_is_wall = False
         right_is_wall = False
@@ -384,24 +527,15 @@ class NoUnnecessaryGuessSolver(Agent):
                         right_is_wall = True
                 else:
                     non_wall_tiles_in_sample += 1
+        
+        has_wall = {
+            'top': top_is_wall,
+            'right': right_is_wall,
+            'bottom': bottom_is_wall,
+            'left': left_is_wall
+        }
 
-        t = int(top_is_wall)
-        r = int(right_is_wall)
-        b = int(bottom_is_wall)
-        l = int(left_is_wall)
-
-        # Calculate how many non-wall tiles are in and around sample
-        non_wall_width = len(sample[0]) + 2 - (2 * (l + r))
-        non_wall_height = len(sample) + 2 - (2 * (t + b))
-        tiles_inside_sample_and_surrounding = non_wall_width * non_wall_height
-
-        # Calculate how many tiles are outside sample and its surrounding area
-        total_tiles_in_grid = len(self.grid[0]) * len(self.grid)
-        tiles_outside_sample_surrounding = max(total_tiles_in_grid - tiles_inside_sample_and_surrounding, 0)
-
-        unknown_tiles_surrounding_sample = tiles_inside_sample_and_surrounding - non_wall_tiles_in_sample
-
-        return (tiles_outside_sample_surrounding, unknown_tiles_surrounding_sample)
+        return (has_wall, non_wall_tiles_in_sample)
 
     def bruteForceWithJustAdacentMinesConstraints(self, sample, disjoint_sections, sure_moves):
         # When only using adjacent mines constraints, the number unknown tiles that could possibly give
@@ -660,8 +794,8 @@ class NoUnnecessaryGuessSolver(Agent):
         if game_state in [_Game.State.LOSE, _Game.State.ILLEGAL_MOVE] and self.last_move_was_sure_move:
             raise AssertionError("Sure move lost a game!")
 
-        # Removes coordinates from every tile. A sample's coordinates will be inferred
-        # from the element's position in the sample.
+        # Removes coordinates from every tile. A tile's coordinates will be inferred
+        # from that element's position in the sample 2D list.
         converted_grid = [[SampleTile(tile) for tile in row] for row in grid]
         self.grid = converted_grid
 
@@ -671,6 +805,13 @@ class NoUnnecessaryGuessSolver(Agent):
         # Last played move could have uncovered multiple tiles, making some sure moves now illegal moves.
         self.sure_moves_not_played_yet = self.pruneIllegalSureMoves(self.sure_moves_not_played_yet)
         self.last_move_was_sure_move = None
+
+        # Reset turn-specific stats
+        self.turn_samples_stats = []
+        self.new_sps_mine_solutions = 0
+        self.new_sps_no_mine_solutions = 0
+        self.new_brute_mine_solutions = 0
+        self.new_brute_no_mine_solutions = 0
 
     def pruneIllegalSureMoves(self, sure_moves):
         ''' Gets rid of sure moves that cannot actually be played. '''
@@ -698,7 +839,10 @@ class NoUnnecessaryGuessSolver(Agent):
         self.random = Random(self.seed)
         self.sure_moves_not_played_yet = set()
         self.samples_considered_already = set()
-        self.had_to_guess_this_game = False
+
+        # Resetting stats stuff
+        self.num_guesses_for_game = 0
+        self.turns_this_game_stats = []
 
     @staticmethod
     def disjointSectionsToHighlights(sections):
@@ -843,6 +987,15 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def feedRenderer(self, renderer):
         self.renderer = renderer
+
+    def get_stats(self):
+        stats = {'samples_considered': self.sample_count,
+                'samples_with_solutions': self.samples_with_solution_count}
+
+        return stats
+
+    def get_game_turns_stats(self):
+        return self.turn_stats 
 
 
 class SampleTile():

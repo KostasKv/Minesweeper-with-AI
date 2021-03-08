@@ -217,6 +217,8 @@ def packageTaskResults(results, task_info):
     return results
 
 def configToDifficultyString(config):
+    if config['columns'] == 8 and config['rows'] == 8:
+        difficulty = 'Beginner (8x8)'
     if config['columns'] == 9 and config['rows'] == 9:
         difficulty = 'Beginner (9x9)'
     elif config['columns'] == 16 and config['rows'] == 16:
@@ -399,7 +401,7 @@ def getExperiment3():
     agent_parameters = {
         'variable': {
             'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
-            'use_num_mines_constraint': [True, False]
+            'use_num_mines_constraint': [True, False],
         },
         'constant': {
             'seed': 2020,
@@ -415,7 +417,7 @@ def getExperiment3():
                 {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
                 {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
                 {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
-                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False}
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False},
             ],
         },
         'constant': {
@@ -444,24 +446,31 @@ def getExperiment4():
 
     agent_parameters = {
         'variable': {
-            'first_click_pos': [None, (2, 2)],
-            'first_click_is_zero': [True, False],
-            
+            'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
+            'use_num_mines_constraint': [True, False],
         },
         'constant': {
-            'sample_size': None,  # Sample size None means use full grid
-            'seed': 20,
+            'seed': 4040,
             'first_click_pos': None,
-            'use_num_mines_constraint': True
         }
     }
 
     other_parameters = {
-        'variable': None,
+        'variable': {
+            'config': [
+                {'rows': 8, 'columns': 8, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 8, 'columns': 8, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': False},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True},
+                {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': False},
+            ],
+        },
         'constant': {
-            'num_games': int(1e5),
-            'config': {'rows': 9, 'columns': 9, 'num_mines': 10},
-            'seed': 50,
+            'num_games': 100000,
+            'seed': 40,
             'verbose': False,
             'visualise': False,  
         }

@@ -156,6 +156,9 @@ class _Game:
 
         return adjacent_tiles
 
+    @staticmethod
+    def is_end_of_game_state(state):
+        return state in [_Game.State.LOSE, _Game.State.WIN, _Game.State.ILLEGAL_MOVE]
 
     class State(Enum):
         START = 1

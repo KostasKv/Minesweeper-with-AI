@@ -6,47 +6,8 @@ from._executor import _Executor
 from ._pygame_renderer import PygameRenderer
 from ._no_screen_renderer import NoScreenRenderer
 
-            
-def playGames(executor, renderer, verbose):
-    ''' Program's main loop '''
-
-    stats = {'wins': 0, 'wins_without_guess': 0}
-    
-    start_time = time.time()
-
-    # First move of all games.
-    action = renderer.getNextMove()
-    result = executor.make_move(action)
-
-    # Play until all games are finished
-    while result:
-        # Temp verbose solution. It should give more information, and the responsibility should be put on the renderer
-        # to display the information (however the information could be processed outside of it and fed to the renderer.
-        # Not yet sure which is preferable)
-        if verbose:
-            print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
-
-        if result[2] == _Game.State.WIN:
-            stats['wins'] += 1
-
-            if not renderer.agent.had_to_guess_this_game:
-                stats['wins_without_guess'] += 1
-
-        renderer.updateFromResult(result)
-        action = renderer.getNextMove()
-        result = executor.make_move(action)
-
-    end_time = time.time()
-    stats['time_elapsed'] = end_time - start_time
-
-    # print("wins: {} ({}%)".format(wins, round((wins / num_games) * 100, 2)))
-
-    agent_stats = renderer.onEndOfGames()
-
-    if agent_stats:
-        stats = {**stats, **agent_stats}
-    
-    return stats
+# For use in method 'update_stats_from_action_result'. Just need this to persist between function calls so we can time game durations.
+game_start_time = None
 
 
 def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10, 'first_click_is_zero':True}, num_games=10, visualise=True, verbose=1, seed=None, game_seeds=None):
@@ -67,6 +28,98 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10, 'first_click_
         renderer = NoScreenRenderer(config, game.grid, agent)
 
     return playGames(executor, renderer, verbose)
+
+
+def playGames(executor, renderer, verbose):
+    ''' Program's main loop '''
+    global game_start_time
+
+    stats = initialise_stats()
+    
+    start_time = time.time()
+    game_start_time = time.time()
+
+    # First move of all games.
+    action = renderer.getNextMove()
+    result = executor.make_move(action)
+
+    # Play until all games are finished
+    while result:
+        # Temp verbose solution. It should give more information, and the responsibility should be put on the renderer
+        # to display the information (however the information could be processed outside of it and fed to the renderer.
+        # Not yet sure which is preferable)
+        if verbose:
+            print("Made move {}.\tResult: {} mines left, game state {}".format(action, result[1], result[2]))
+
+        stats = update_stats_from_action_result(stats, result, renderer, executor)
+
+        renderer.updateFromResult(result)
+        action = renderer.getNextMove()
+        result = executor.make_move(action)
+
+    end_time = time.time()
+    stats['time_elapsed'] = end_time - start_time
+
+    # print("wins: {} ({}%)".format(wins, round((wins / num_games) * 100, 2)))
+
+    agent_stats = renderer.onEndOfGames()
+
+    if agent_stats:
+        stats = {**stats, **agent_stats}
+    
+    return stats
+
+
+def initialise_stats():
+    return {
+        'wins': 0,
+        'wins_without_guess': 0,
+        'games': [],
+    }
+
+def update_stats_from_action_result(stats, result, renderer, executor):
+    global game_start_time
+    (grid, num_mines_left, state) = result
+
+    if state == _Game.State.START:
+        game_start_time = time.time()
+
+    if _Game.is_end_of_game_state(state):
+        game_end_time = time.time()
+
+        game_stats = {
+            'seed': executor.current_game_seed,
+            'grid_mines': grid_to_binary(grid),
+            'win': state == _Game.State.WIN,
+            'seconds_elapsed': game_end_time - game_start_time,
+            'sample_size': renderer.agent.SAMPLE_SIZE,
+            'use_mine_count': renderer.agent.use_num_mines_constraint,
+            'first_click_always_zero': executor.get_game_config()['first_click_is_zero'],
+            'num_guesses': renderer.agent.num_guesses_for_game,
+            # 'turns': renderer.agent.get_game_turns_stats() 
+        }
+
+        stats['games'].append(game_stats)
+        
+        if state == _Game.State.WIN:
+            stats['wins'] += 1
+            if not renderer.agent.had_to_guess_this_game:
+                stats['wins_without_guess'] += 1
+
+    return stats
+
+
+def grid_to_binary(grid):
+    binary_grid = ""
+
+    for row in grid:
+        for tile in row:
+            if tile.is_mine:
+                binary_grid += "1"
+            else:
+                binary_grid += "0"
+    
+    return binary_grid
 
 def create_game_seeds(num_games, run_seed):
     ''' Creates a batch of game seeds from a given game configuration and run seed.
