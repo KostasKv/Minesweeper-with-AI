@@ -28,14 +28,12 @@ class NoUnnecessaryGuessSolver(Agent):
         self.samples_with_solution_count = 0
         self.num_guesses_for_game = 0
         self.last_move_was_sure_move = None
-        self.turns_this_game_stats = []
         self.new_sps_mine_solutions = 0
         self.new_sps_no_mine_solutions = 0
         self.new_brute_mine_solutions = 0
         self.new_brute_no_mine_solutions = 0
-        self.turn_samples_stats = []
-
-
+        self.turn_stats_this_game = []
+        self.sample_stats_this_turn = []
 
     def nextMove(self):
         # Decide move and time it
@@ -45,8 +43,8 @@ class NoUnnecessaryGuessSolver(Agent):
         
         # Keep track of turn stats
         turn_decision_time = turn_end_time - turn_start_time
-        turn_stats = self.updateTurnsStats(turn_decision_time)
-        self.turns_this_game_stats.append(turn_stats)
+        turn_stats = self.get_turn_stats(turn_decision_time)
+        self.turn_stats_this_game.append(turn_stats)
         
         return move
 
@@ -76,29 +74,20 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return move
 
-    def updateTurnsStats(self, turn_decision_time):
+    def get_turn_stats(self, turn_decision_time):
         turn_stats_to_store = {
-            'turn_number': len(self.turns_this_game_stats) + 1,
+            'turn_number': len(self.turn_stats_this_game) + 1,
             'seconds_to_decide_move': turn_decision_time,
-            'samples_considered': len(self.turn_samples_stats),
+            'samples_considered': len(self.sample_stats_this_turn),
             'mine_count': self.mines_left,
             'new_sps_mine_solutions': self.new_sps_mine_solutions,
             'new_sps_no_mine_solutions': self.new_sps_no_mine_solutions,
             'new_brute_mine_solutions': self.new_brute_mine_solutions,
             'new_brute_no_mine_solutions': self.new_brute_no_mine_solutions,
             'tiles_already_uncovered_on_grid': self.count_num_uncovered_tiles(self.grid),
-            'samples': self.turn_samples_stats,
+            'samples': self.sample_stats_this_turn,
         }
 
-        # turn_extra_stats = {
-        #     'samples_considered': len(self.turn_samples_stats),
-        #     'samples': self.turn_samples_stats,
-        # }
-        
-        # # Appends extra stats to existing turn stats
-        # turn_stats = {**self.turn_stats, **turn_extra_stats}
-        
-        # return self.turns_this_game_stats + [turn_stats]
         return turn_stats_to_store
 
     def getFirstMove(self):
@@ -284,19 +273,20 @@ class NoUnnecessaryGuessSolver(Agent):
             brute_duration = 0
         
 
-        self.sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
+        sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
+        self.sample_stats_this_turn.append(sample_stats)
 
         # Translate sure-moves coords from sample-relative coords to actual grid coords
         # and get rid of 'discovered' moves that have already been played 
         sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
         brute_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=True) 
-
+        
         new_sure_moves = sps_sure_moves | brute_sure_moves
         return new_sure_moves
 
     def get_sample_stats(self, sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections):
         sps_move_counts = self.count_up_moves_based_on_strategy(sps_sure_moves, is_brute_moves=False)
-        brute_move_counts = self.count_up_moves_based_on_strategy(sps_sure_moves, is_brute_moves=False)
+        brute_move_counts = self.count_up_moves_based_on_strategy(sps_sure_moves, is_brute_moves=True)
         has_wall, _ = self.check_if_sample_has_wall(sample)
 
         sample_stats = {
@@ -807,7 +797,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.last_move_was_sure_move = None
 
         # Reset turn-specific stats
-        self.turn_samples_stats = []
+        self.sample_stats_this_turn = []
         self.new_sps_mine_solutions = 0
         self.new_sps_no_mine_solutions = 0
         self.new_brute_mine_solutions = 0
@@ -842,7 +832,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         # Resetting stats stuff
         self.num_guesses_for_game = 0
-        self.turns_this_game_stats = []
+        self.turn_stats_this_game = []
 
     @staticmethod
     def disjointSectionsToHighlights(sections):
@@ -989,13 +979,17 @@ class NoUnnecessaryGuessSolver(Agent):
         self.renderer = renderer
 
     def get_stats(self):
-        stats = {'samples_considered': self.sample_count,
-                'samples_with_solutions': self.samples_with_solution_count}
+        # TODO: Update experiment script and inbetween parts so that this redundant info from this agent
+        # can be removed.
 
+        # Stats used for earlier experiments. Kept for compatibility reasons, even though this same
+        # information can be extracted from the main stats.
+        other_stats = {'samples_considered': self.sample_count,
+                       'samples_with_solutions': self.samples_with_solution_count,}
         return stats
 
     def get_game_turns_stats(self):
-        return self.turn_stats 
+        return self.turn_stats_this_game 
 
 
 class SampleTile():
