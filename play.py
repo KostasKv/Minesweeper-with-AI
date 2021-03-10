@@ -14,7 +14,7 @@ if __name__ == '__main__':
     benchmark = False
     num_games_profile = 100
     num_games_benchmark = 10
-    num_games_other = 100
+    num_games_other = 2
     config = {'rows': 16, 'columns': 30, 'num_mines': 99, 'first_click_is_zero': True}
     run_seed = 57
     agent_seed = 14

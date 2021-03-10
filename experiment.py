@@ -10,14 +10,15 @@ from sklearn.model_selection import ParameterGrid
 from tqdm import tqdm
 import psutil
 import more_itertools
+from sqlalchemy import create_engine
 
 from minesweeper_ai import minesweeper
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 
 
 def main():
-    experiment = getExperiment2()
-    games_batch_size = 1000
+    experiment = getExperiment4()
+    games_batch_size = 100
     runExperiment(experiment, games_batch_size)
 
 def runExperiment(experiment, batch_size):
@@ -32,8 +33,9 @@ def runExperiment(experiment, batch_size):
     physical_cores_available = psutil.cpu_count(logical=False)
 
     # Run experiment using all CPU cores available
-    with Pool(processes=physical_cores_available) as p:
-        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    # with Pool(processes=physical_cores_available) as p:
+    #     all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -115,7 +117,7 @@ def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
         tasks_with_param_id = [(parameters_id, task) for task in tasks]
         batched_tasks_grouped_by_parameter.append(tasks_with_param_id)
 
-    return zip(batched_tasks_grouped_by_parameter)
+    return list(more_itertools.roundrobin(*batched_tasks_grouped_by_parameter))
 
 def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
     ''' Batch size is the number of games to play for a task. '''
@@ -201,21 +203,49 @@ def appendToFileName(name, suffix):
     (name, ext) = os.path.splitext(name)
     return name + suffix + ext
 
-def store_results_in_database_on_task_finish(task_info):
+def task_handler_store_results_in_database_on_task_finish(task_info):
     ''' Warning: Only for use with main experiment! Not configured to work for
         any other experiment.'''
-    DEBUG_processor_num_at_task_start = current_process().pid
     
-    (method, args, kwargs) = task_info[1]                  # unpack
-    results = method(*args, **kwargs)                 # run task
+    # unpack
+    (_, task) = task_info
+    (method, args, kwargs) = task   
 
-    DEBUG_processor_num_at_task_end = current_process().pid
-    print(f"PID start: {DEBUG_processor_num_at_task_start}\tend: {DEBUG_processor_num_at_task_end}")
-
+    # run task
+    results = method(*args, **kwargs)                
+    results['pid'] = current_process().pid
+    
     return store_task_results_in_database(results, task_info)
 
 def store_task_results_in_database(results, task_info):
-    raise NotImplementedError("Storing results in database on task finish not yet done.")
+    # # bank account details
+    # user = "cokk"
+    # topsecretword = "8iCyrvxoK4RMitkZ" 
+    # host = "lnx-cokk-1.lunet.lboro.ac.uk"
+    # db_name = "cokk"
+    user = 'lmao'
+    topsecretword = 'gibberish'
+    host = 'urmum'
+    db_name = 'huge'
+
+    # connect
+    engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}', echo = True)
+    engine.connect()
+
+    # Home deco
+    meta = MetaData()
+    chair = Table(
+        'chair', meta, 
+        Column('id', Integer, primary_key = True), 
+        Column('whatwood', String(69)), 
+        Column('whowood', String(69)), 
+    )
+    meta.create_all(engine)
+
+    # print(engine)
+    pass
+
+    
 
 def complete_task_and_return_results_including_game_info(task_info):
     (method, args, kwargs) = task_info[1]                  # unpack
@@ -490,15 +520,15 @@ def getExperiment4():
             ],
         },
         'constant': {
-            'num_games': 100000,
+            # 'num_games': 100000,
+            'num_games': 10,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
         }
     }
 
-    raise NotImplementedError("Need to link this experiment to database first")
-    task_handler = store_results_in_database_on_task_finish
+    task_handler = task_handler_store_results_in_database_on_task_finish
     on_finish = None
 
     experiment = {
