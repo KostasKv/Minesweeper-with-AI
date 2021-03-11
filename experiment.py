@@ -17,9 +17,25 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    experiment = getExperiment4()
-    games_batch_size = 100
-    runExperiment(experiment, games_batch_size)
+    experiment = getExperiment2()
+    
+    # games_batch_size = 100
+
+    batch_sizes = [10, 25, 50, 100, 250, 500]
+    all_times = []
+
+    for (i, games_batch_size) in enumerate(batch_sizes):
+        start = time.time()
+        runExperiment(experiment, games_batch_size)
+        end = time.time()
+
+        run_time = end - start
+        results_row = {'batch_size': games_batch_size, 'time_elapsed': run_time}
+        all_times.append(results_row)
+        print(f"{i + 1}/{len(batch_sizes)}")
+
+    saveDictRowsAsCsv(all_times, 'batch size experiment times')
+
 
 def runExperiment(experiment, batch_size):
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size)
@@ -29,13 +45,13 @@ def runExperiment(experiment, batch_size):
     # Ought to try a quick benchmark to test between using as workers as logical v physical cores.
     # Also, what about N-1 cores (each for physical & logical)?
 
-    # logical_cores_available = psutil.cpu_count(logical=True)
-    physical_cores_available = psutil.cpu_count(logical=False)
+    logical_cores_available = psutil.cpu_count(logical=True)
+    # physical_cores_available = psutil.cpu_count(logical=False)
 
     # Run experiment using all CPU cores available
-    # with Pool(processes=physical_cores_available) as p:
-    #     all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
-    all_results = [task_handler(task_info) for task_info in tasks_info]
+    with Pool(processes=logical_cores_available) as p:
+        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -43,6 +59,8 @@ def experimentPrepAndGetTasksAndConstants(experiment, batch_size):
     print("Preparing experiment '{}'...".format(experiment['title']), end="")
 
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
+    constants['batch_size'] = batch_size
+
     tasks = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
     num_combinations = len(parameter_grid)
     num_games = constants['num_games']
@@ -245,18 +263,30 @@ def store_task_results_in_database(results, task_info):
     # print(engine)
     pass
 
-    
 
 def complete_task_and_return_results_including_game_info(task_info):
+    start = time.time()
+
     (method, args, kwargs) = task_info[1]                  # unpack
     results = method(*args, **kwargs)                 # run task
+
+    end = time.time()
+    results['task_time_elapsed'] = end - start
     return add_extra_info_to_task_results(results, task_info)
 
-def add_extra_info_to_task_results(results, task_info):
+def add_extra_info_to_task_results(results_initial, task_info):
     ''' Extends task's results with extra information. '''
     (parameters_id, task) = task_info
     _, args, kargs = task
     agent = args[0]
+
+    results = {
+        'wins': results_initial['wins'],
+        'wins_without_guess': results_initial['wins_without_guess'],
+        'time_elapsed': results_initial['time_elapsed'],
+        'samples_considered': results_initial['samples_considered'],
+        'samples_with_solutions': results_initial['samples_with_solutions'],
+        }
 
     results['difficulty'] = configToDifficultyString(kargs['config'])
     results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE) # represent sample size (A, B) as string 'AxB'. Bit easier to understand.
@@ -419,7 +449,9 @@ def getExperiment2():
             ],
         },
         'constant': {
-            'num_games': 50000,
+            # 'num_games': 50000,
+            # 'num_games': 7500,   # temp for batch size experiment
+            'num_games': 2,
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
