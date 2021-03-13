@@ -450,8 +450,7 @@ def getExperiment2():
         },
         'constant': {
             # 'num_games': 50000,
-            # 'num_games': 7500,   # temp for batch size experiment
-            'num_games': 2,
+            'num_games': 7500,   # temp for batch size experiment
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
