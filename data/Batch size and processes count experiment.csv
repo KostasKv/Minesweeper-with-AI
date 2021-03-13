@@ -1,0 +1,7 @@
+wins,wins_without_guess,time_elapsed,samples_considered,samples_with_solutions,difficulty,sample_size,use_num_mines_constraint,first_click_pos,first_click_is_zero,parameters_id
+1,1,0.02733755111694336,4,4,Beginner (9x9),11x11,True,"(3, 3)",True,1
+1,1,0.3292357921600342,11,11,Intermediate (16x16),18x18,True,"(3, 3)",True,2
+1,1,0.016629457473754883,3,3,Beginner (9x9),11x11,True,"(3, 3)",True,1
+1,1,0.11372685432434082,6,6,Intermediate (16x16),18x18,True,"(3, 3)",True,2
+0,0,0.9332947731018066,16,13,Expert (16x30),18x32,True,"(3, 3)",True,3
+1,0,1.5136420726776123,27,26,Expert (16x30),18x32,True,"(3, 3)",True,3

@@ -4,6 +4,7 @@ import os
 import csv
 from multiprocessing import Pool, current_process
 from copy import copy
+import itertools
 
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
@@ -19,47 +20,48 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 def main():
     experiment = getExperiment2()
     
-    # games_batch_size = 100
+    num_logical_cores = psutil.cpu_count(logical=True)
+    batch_sizes = [1, 5, 10, 25, 50, 100, 250, 500]
+    num_processes_range = range(2, num_logical_cores + 1)
 
-    batch_sizes = [10, 25, 50, 100, 250, 500]
+    # Cartesian product. All combinations of batch size and num-workers pairs. Transformed to list so can use len in print msg.
+    batch_size_num_processes_pairs = list(itertools.product(batch_sizes, num_processes_range))
+
     all_times = []
-
-    for (i, games_batch_size) in enumerate(batch_sizes):
+    for (i, (batch_size, num_processes)) in enumerate(batch_size_num_processes_pairs):
+        # Run experiment and time it
         start = time.time()
-        runExperiment(experiment, games_batch_size)
+        runExperiment(experiment, batch_size, num_processes)
         end = time.time()
 
+        # Keep hold of results for this batch-size & num-processes pair
         run_time = end - start
-        results_row = {'batch_size': games_batch_size, 'time_elapsed': run_time}
+        results_row = {'batch_size': batch_size, 'num_processes': num_processes, 'time_elapsed': run_time}
         all_times.append(results_row)
-        print(f"{i + 1}/{len(batch_sizes)}")
 
-    saveDictRowsAsCsv(all_times, 'batch size experiment times')
+        
+        print(f"\n{i + 1}/{len(batch_size_num_processes_pairs)} batch-size & num-processes pairs complete\n")
+
+    saveDictRowsAsCsv(all_times, 'Batch size and processes count experiment times')
 
 
-def runExperiment(experiment, batch_size):
-    (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size)
+def runExperiment(experiment, batch_size, num_processes):
+    (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes)
 
     task_handler = experiment['task_handler']
 
-    # Ought to try a quick benchmark to test between using as workers as logical v physical cores.
-    # Also, what about N-1 cores (each for physical & logical)?
-
-    logical_cores_available = psutil.cpu_count(logical=True)
-    # physical_cores_available = psutil.cpu_count(logical=False)
-
-    # Run experiment using all CPU cores available
-    with Pool(processes=logical_cores_available) as p:
+    # Run experiment using parallel processes
+    with Pool(processes=num_processes) as p:
         all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
-    # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
-def experimentPrepAndGetTasksAndConstants(experiment, batch_size):
+def experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes):
     print("Preparing experiment '{}'...".format(experiment['title']), end="")
 
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
     constants['batch_size'] = batch_size
+    constants['num_processes'] = num_processes
 
     tasks = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
     num_combinations = len(parameter_grid)
@@ -68,7 +70,7 @@ def experimentPrepAndGetTasksAndConstants(experiment, batch_size):
     # Display start-of-experiment info
     print(" DONE")
     print("Running {} games for each of {} different parameter combinations...".format(num_games, num_combinations))
-    print("\nTotal games: {}   Batch size: {}   Total tasks: {}".format((num_games * num_combinations), batch_size, len(tasks)))
+    print("\nTotal games: {}   Batch size: {}   Total tasks: {}    Num processes: {}".format((num_games * num_combinations), batch_size, len(tasks), num_processes))
     return (tasks, constants)
 
 def getSplitParameterGridAndConstants(experiment):
@@ -426,7 +428,8 @@ def getExperiment2():
         - ~16% Expert 
     '''
 
-    title = "Solver verification experiment"
+    # title = "Solver verification experiment"
+    title = "Batch size and processes count experiment" # Temp renaming for other experiment (hijacking this old experiment)
 
     agent_parameters = {
         'variable': {
@@ -450,7 +453,8 @@ def getExperiment2():
         },
         'constant': {
             # 'num_games': 50000,
-            'num_games': 7500,   # temp for batch size experiment
+            # 'num_games': 7500,   # temp for batch size & process count experiment
+            'num_games': 2,
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
