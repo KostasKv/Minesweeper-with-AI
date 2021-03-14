@@ -110,22 +110,6 @@ def update_stats_from_action_result(stats, result, renderer, executor):
     return stats
 
 
-def grid_to_binary(grid):
-    binary_grid = ""
-
-    for row in grid:
-        for tile in row:
-            if tile.is_mine:
-                binary_grid += "1"
-            else:
-                binary_grid += "0"
-    
-    return binary_grid
-
-def grid_pos_to_binary(pos):
-    (x, y) = pos
-    return "{0:08b}".format(x) + "{0:08b}".format(y)    # Two 8-digit binary strings of x and y concatenated.
-
 def create_game_seeds(num_games, run_seed):
     ''' Creates a batch of game seeds from a given game configuration and run seed.
         This method exposes the internal method for creating game seeds. '''

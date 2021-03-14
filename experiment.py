@@ -11,48 +11,34 @@ from sklearn.model_selection import ParameterGrid
 from tqdm import tqdm
 import psutil
 import more_itertools
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, insert, select
+from sqlalchemy.sql import and_
+from sqlalchemy.dialects.mysql import VARBINARY
+from bitarray import bitarray
 
 from minesweeper_ai import minesweeper
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 
 
 def main():
-    experiment = getExperiment2()
-    
-    num_logical_cores = psutil.cpu_count(logical=True)
-    batch_sizes = [1, 5, 10, 25, 50, 100, 250, 500]
-    num_processes_range = range(2, num_logical_cores + 1)
+    experiment = getExperiment4()
+    batch_size = 1
+    num_processes = 6
 
-    # Cartesian product. All combinations of batch size and num-workers pairs. Transformed to list so can use len in print msg.
-    batch_size_num_processes_pairs = list(itertools.product(batch_sizes, num_processes_range))
-
-    all_times = []
-    for (i, (batch_size, num_processes)) in enumerate(batch_size_num_processes_pairs):
-        # Run experiment and time it
-        start = time.time()
-        runExperiment(experiment, batch_size, num_processes)
-        end = time.time()
-
-        # Keep hold of results for this batch-size & num-processes pair
-        run_time = end - start
-        results_row = {'batch_size': batch_size, 'num_processes': num_processes, 'time_elapsed': run_time}
-        all_times.append(results_row)
-
-        
-        print(f"\n{i + 1}/{len(batch_size_num_processes_pairs)} batch-size & num-processes pairs complete\n")
-
-    saveDictRowsAsCsv(all_times, 'Batch size and processes count experiment times')
+    runExperiment(experiment, batch_size, num_processes)
 
 
 def runExperiment(experiment, batch_size, num_processes):
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes)
-
+    
     task_handler = experiment['task_handler']
 
-    # Run experiment using parallel processes
-    with Pool(processes=num_processes) as p:
-        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    # Run experiment tasks with multiple processes running in parallel
+    # with Pool(processes=num_processes) as p:
+    #     all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+
+    # single-t
+    all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -228,42 +214,145 @@ def task_handler_store_results_in_database_on_task_finish(task_info):
         any other experiment.'''
     
     # unpack
-    (_, task) = task_info
+    (task_id, task) = task_info
     (method, args, kwargs) = task   
 
     # run task
-    results = method(*args, **kwargs)                
+    results = method(*args, **kwargs)            
+
+    # Extra info for results to be stored  
     results['pid'] = current_process().pid
+    results['task_id'] = task_id
     
     return store_task_results_in_database(results, task_info)
 
 def store_task_results_in_database(results, task_info):
-    # # bank account details
-    # user = "cokk"
+    # bank account details
+    user = "cokk"
     # topsecretword = "8iCyrvxoK4RMitkZ" 
     # host = "lnx-cokk-1.lunet.lboro.ac.uk"
-    # db_name = "cokk"
-    user = 'lmao'
-    topsecretword = 'gibberish'
-    host = 'urmum'
-    db_name = 'huge'
+    db_name = "cokk"
+
+    topsecretword = "password"
+    host = "localhost"
 
     # connect
-    engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}', echo = True)
-    engine.connect()
+    engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4')
+    # engine.connect()
+    
+    # Get needed tables from DB
+    meta_data = MetaData()
+    meta_data.reflect(engine)
+    table_difficulty = meta_data.tables['difficulty']
+    table_grid = meta_data.tables['grid']
+    table_game = meta_data.tables['game']
+    table_turn = meta_data.tables['turn']
+    table_sample = meta_data.tables['sample']
+    table_finished_task = meta_data.tables['finished_task']
 
-    # Home deco
-    meta = MetaData()
-    chair = Table(
-        'chair', meta, 
-        Column('id', Integer, primary_key = True), 
-        Column('whatwood', String(69)), 
-        Column('whowood', String(69)), 
-    )
-    meta.create_all(engine)
+    (_, (_, _, x)) = task_info
+    game_config = x['config']
 
-    # print(engine)
-    pass
+
+    # Inserts results into DB, all within a single transaction
+    with engine.begin() as connection:
+        for game_stats in results['games']:
+            difficuly_id = fetch_difficulty_id(connection, table_difficulty, game_config)
+            grid_id = store_grid_if_not_exists(connection, table_grid, game_stats, difficuly_id)
+            store_game_and_related_entities(connection, meta_data, game_stats, grid_id)
+            
+        store_finished_task(connection, table_finished_task, results)
+        
+
+def store_grid_if_not_exists(connection, table_grid, game_stats, difficulty_id):
+    grid_mines = grid_to_binary(game_stats['grid_mines'])
+
+    # Get grid id
+    query = select([table_grid.c.id]).where(
+        and_(
+            table_grid.c.difficulty_id == difficulty_id,
+            table_grid.c.seed == game_stats['seed'],
+            table_grid.c.grid_mines == grid_mines,
+            )
+        )
+    result = connection.execute(query).fetchone()
+
+    if result is None:
+        # Insert grid into DB as it hasn't been inserted already
+        insert_grid = insert(table_grid).values(difficulty_id=difficulty_id, seed=game_stats['seed'], grid_mines=grid_mines)
+        insert_grid.returning(table_grid.c.id)
+        insert_grid.prefix_with('ON DUPLICATE IGNORE')
+        result = connection.execute(insert_grid)
+        grid_id = result.lastrowid
+    else:
+        grid_id = result[0]
+
+    return grid_id
+
+def fetch_difficulty_id(connection, table_difficulty, game_config):
+    query = select([table_difficulty.c.id]).where(
+        and_(
+            table_difficulty.c.rows == game_config['rows'],
+            table_difficulty.c.columns == game_config['columns'],
+            table_difficulty.c.mines == game_config['num_mines'],
+            )
+        )
+
+    result = connection.execute(query).fetchone()
+    return result[0]
+
+def store_game_and_related_entities(connection, meta_data, game_stats, grid_id):
+    # Get table references
+    table_game = meta_data.tables['game']
+    table_turn = meta_data.tables['turn']
+    table_sample = meta_data.tables['sample']
+
+    # Store game
+    game_id = store_game_entity(connection, table_game, game_stats, grid_id)
+
+    # Store turns of game and each turn's samples
+    for turn_stats in results['turns']:
+        turn_id = store_turn_entity(connection, table_turn, turn_stats, game_id)
+
+        samples_stats = turn_stats['samples_stats']
+        store_samples(connection, table_sample, samples_stats, samples_stats, turn_id)
+
+def store_game_entity(connection, table_game, game_stats, grid_id):
+    return
+    # insert_game_query = insert(table_Game).values(
+    #     grid_id=grid_id,
+    #     win=
+    #     )
+
+def store_turn_entity(connection, table_turn, turn_stats, game_id):
+    return
+
+def store_samples(connection, table_sample, samples_stats, turn_id):
+    for sample_stats in samples_stats:
+        pass
+        # insert_sample_query = insert(table_sample).values()
+
+def store_finished_task(connection, table_finished_task, results):
+    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
+    connection.execute(insert_task_id)
+
+
+def grid_to_binary(grid):
+    binary_grid = bitarray()
+
+    for row in grid:
+        for tile in row:
+            if tile.is_mine:
+                binary_grid.append(True)
+            else:
+                binary_grid.append(False)
+
+    return binary_grid
+
+def grid_pos_to_binary(pos):
+    (x, y) = pos
+    binary_string = "{0:08b}".format(x) + "{0:08b}".format(y)    # Two 8-digit binary strings, each representing integers x and y, concatenated.
+    return bitarray(binary_string)
 
 
 def complete_task_and_return_results_including_game_info(task_info):
@@ -497,6 +586,8 @@ def getExperiment3():
     other_parameters = {
         'variable': {
             'config': [
+                {'rows': 8, 'columns': 8, 'num_mines': 10, 'first_click_is_zero': True},
+                {'rows': 8, 'columns': 8, 'num_mines': 10, 'first_click_is_zero': False},
                 {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': True},
                 {'rows': 9, 'columns': 9, 'num_mines': 10, 'first_click_is_zero': False},
                 {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True},
