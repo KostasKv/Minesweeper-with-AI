@@ -86,7 +86,7 @@ class NoUnnecessaryGuessSolver(Agent):
             'new_brute_mine_solutions': self.new_brute_mine_solutions,
             'new_brute_no_mine_solutions': self.new_brute_no_mine_solutions,
             'tiles_already_uncovered_on_grid': self.count_num_uncovered_tiles(self.grid),
-            'samples': self.sample_stats_this_turn,
+            'samples_stats': self.sample_stats_this_turn,
         }
 
         return turn_stats_to_store
@@ -291,6 +291,8 @@ class NoUnnecessaryGuessSolver(Agent):
         has_wall, _ = self.check_if_sample_has_wall(sample)
 
         sample_stats = {
+            'position_x': sample_pos[0],
+            'position_y': sample_pos[1],
             'sps_mine_solutions': sps_mine_solutions,
             'sps_no_mine_solutions': sps_no_mine_solutions,
             'brute_mine_solutions': brute_mine_solutions,
@@ -298,7 +300,7 @@ class NoUnnecessaryGuessSolver(Agent):
             'sps_seconds_elapsed': sps_duration,
             'brute_seconds_elapsed': brute_duration,
             'disjoint_sections_sizes': self.get_disjoint_section_sizes(disjoint_sections),
-            'tiles_already_uncoverd_in_sample': self.count_num_uncovered_tiles(sample),
+            'tiles_already_uncovered_in_sample': self.count_num_uncovered_tiles(sample),
             'has_wall': has_wall
         }
 
@@ -309,12 +311,11 @@ class NoUnnecessaryGuessSolver(Agent):
         '''encoding is a string in format "x1,y1#x2,y2#...#xn,yn" where xi and yi are the
            number of tiles in the fringe and frontier, respectively, of the i'th section
            (n sections overall).'''
-        return '#'.join(f'{len(frontier)},{len(fringe)}' for (frontier, fringe) in disjoint_sections)
+        return [map(len, frontier_and_fringe_tuple) for frontier_and_fringe_tuple in disjoint_sections]
 
     @staticmethod
     def count_num_uncovered_tiles(tiles):
         return sum(1 for row in tiles for tile in row if tile is not None and tile.uncovered)
-        
 
     def translate_and_prune_sure_moves(self, moves, sample_pos, is_brute_moves):
         if moves:

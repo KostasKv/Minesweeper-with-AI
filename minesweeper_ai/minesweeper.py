@@ -29,7 +29,6 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10, 'first_click_
 
     return playGames(executor, renderer, verbose)
 
-
 def playGames(executor, renderer, verbose):
     ''' Program's main loop '''
     global game_start_time
@@ -69,7 +68,6 @@ def playGames(executor, renderer, verbose):
     
     return stats
 
-
 def initialise_stats():
     return {
         'wins': 0,
@@ -92,11 +90,13 @@ def update_stats_from_action_result(stats, result, renderer, executor):
             'grid_mines': grid,
             'win': state == _Game.State.WIN,
             'seconds_elapsed': game_end_time - game_start_time,
-            'sample_size': renderer.agent.SAMPLE_SIZE,
+            'sample_width': renderer.agent.SAMPLE_SIZE[0],
+            'sample_height': renderer.agent.SAMPLE_SIZE[1],
             'use_mine_count': renderer.agent.use_num_mines_constraint,
             'first_click_always_zero': executor.get_game_config()['first_click_is_zero'],
             'num_guesses': renderer.agent.num_guesses_for_game,
-            'first_click_pos': renderer.agent.first_click_pos_this_game,
+            'first_click_pos_x': renderer.agent.first_click_pos_this_game[0],
+            'first_click_pos_y': renderer.agent.first_click_pos_this_game[1],
             'turns': renderer.agent.get_game_turns_stats(),
         }
 
@@ -109,22 +109,6 @@ def update_stats_from_action_result(stats, result, renderer, executor):
 
     return stats
 
-
-def grid_to_binary(grid):
-    binary_grid = ""
-
-    for row in grid:
-        for tile in row:
-            if tile.is_mine:
-                binary_grid += "1"
-            else:
-                binary_grid += "0"
-    
-    return binary_grid
-
-def grid_pos_to_binary(pos):
-    (x, y) = pos
-    return "{0:08b}".format(x) + "{0:08b}".format(y)    # Two 8-digit binary strings of x and y concatenated.
 
 def create_game_seeds(num_games, run_seed):
     ''' Creates a batch of game seeds from a given game configuration and run seed.
