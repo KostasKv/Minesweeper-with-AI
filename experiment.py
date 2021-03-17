@@ -22,7 +22,7 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 def main():
     experiment = getExperiment4()
-    batch_size = 1
+    batch_size = 10
     num_processes = 6
 
     runExperiment(experiment, batch_size, num_processes)
@@ -30,33 +30,63 @@ def main():
 
 def runExperiment(experiment, batch_size, num_processes):
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes)
-    
+
+    if tasks_info is None:
+        return  # All tasks already finished. End program.
+
     task_handler = experiment['task_handler']
 
     # Run experiment tasks with multiple processes running in parallel
-    # with Pool(processes=num_processes) as p:
-    #     all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    with Pool(processes=num_processes) as p:
+        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
 
-    # single-t
-    all_results = [task_handler(task_info) for task_info in tasks_info]
+    # # single-process run for DEBUG pursposes
+    # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
 def experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes):
-    print("Preparing experiment '{}'...".format(experiment['title']), end="")
-
+    print(f"Preparing experiment '{experiment['title']}':")
+    print("Creating tasks...", end=' ')
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
     constants['batch_size'] = batch_size
     constants['num_processes'] = num_processes
-
     tasks = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
+    print("DONE")
+
+    print("Checking for finished tasks...", end=' ')
+    finished_task_ids = fetch_finished_task_ids()
+    print("DONE")
+
+    num_all_tasks = len(tasks)
+
+    if len(finished_task_ids) == num_all_tasks:
+        print("All experiment tasks have already been finished! Exitting...")
+        return (None, None)
+
+    if finished_task_ids:
+        print(f"{len(finished_task_ids)}/{num_all_tasks} tasks already finished. Filtering out finished tasks...", end=' ')
+        tasks = filter_finished_tasks(tasks, finished_task_ids)
+        print("DONE")
+    else:
+        print("No tasks finished; This is the first run.")
+
+    print("Experiment ready to run.\n\n")
+
     num_combinations = len(parameter_grid)
     num_games = constants['num_games']
+    total_games = num_games * num_combinations
 
-    # Display start-of-experiment info
-    print(" DONE")
     print("Running {} games for each of {} different parameter combinations...".format(num_games, num_combinations))
-    print("\nTotal games: {}   Batch size: {}   Total tasks: {}    Num processes: {}".format((num_games * num_combinations), batch_size, len(tasks), num_processes))
+    if finished_task_ids:
+        games_left = total_games - (batch_size * len(finished_task_ids))
+        print(f"\nTotal games: {total_games}\tTotal tasks: {num_all_tasks}")
+        print(f"Games left : {games_left}\tBatch size : {batch_size}\t\tTasks left: {len(tasks)}\t\tNum processes: {num_processes}")
+    else:
+        print(f"\nTotal games: {total_games}\tBatch size: {batch_size}\t\tTotal tasks: {num_all_tasks}\t\tNum processes: {num_processes}")
+    
+
+
     return (tasks, constants)
 
 def getSplitParameterGridAndConstants(experiment):
@@ -147,13 +177,30 @@ def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
 
     return tasks
 
+def filter_finished_tasks(tasks_info, finished_task_ids):
+    return list(itertools.filterfalse(lambda x: x[0] in finished_task_ids, tasks_info))
+
+def fetch_finished_task_ids():
+    (engine, meta_data) = get_database_engine_and_reflected_meta_data()
+
+    table_finished_task = meta_data.tables['finished_task']
+
+    # Get all finished task ids from database
+    with engine.begin() as connection:
+        select_query = select([table_finished_task.c.id]).order_by(table_finished_task.c.id)
+        finished_task_ids = connection.execute(select_query).fetchall()
+    
+    return [task_id for (task_id,) in finished_task_ids]
+
 def onEndOfExperiment(experiment, all_results, constants):
     # Save experiment constants info as seperate file
     constants_output_file_name = appendToFileName(experiment['title'], "_other-data")
     saveDictRowsAsCsv([constants], constants_output_file_name)
 
     callback = experiment['on_finish']
-    callback(experiment, all_results)
+
+    if callback:
+        callback(experiment, all_results)
 
 def saveResultsToCsv(experiment, results):
     output_file_name = experiment['title']
@@ -227,6 +274,31 @@ def task_handler_store_results_in_database_on_task_finish(task_info):
     return store_task_results_in_database(results, task_info)
 
 def store_task_results_in_database(results, task_info):
+    (engine, meta_data) = get_database_engine_and_reflected_meta_data()
+
+    table_difficulty = meta_data.tables['difficulty']
+    table_grid = meta_data.tables['grid']
+    table_finished_task = meta_data.tables['finished_task']
+
+    (_, (_, _, x)) = task_info
+    game_config = x['config']
+
+
+    # Inserts tasks results into DB, all within a single transaction
+    with engine.begin() as connection:
+        # Note this has to be done first so that each inserted game entity can reference this task (with task id)
+        store_finished_task(connection, table_finished_task, results)
+
+        for game_stats in results['games']:
+            game_stats['task_id'] = results['task_id']
+
+            difficuly_id = fetch_difficulty_id(connection, table_difficulty, game_config)
+            grid_id = store_grid_if_not_exists(connection, table_grid, game_stats, difficuly_id)
+
+            game_stats['grid_id'] = grid_id
+            store_game_and_related_entities(connection, meta_data, game_stats)
+            
+def get_database_engine_and_reflected_meta_data():
     # bank account details
     user = "cokk"
     # topsecretword = "8iCyrvxoK4RMitkZ" 
@@ -236,52 +308,32 @@ def store_task_results_in_database(results, task_info):
     topsecretword = "password"
     host = "localhost"
 
-    # connect
     engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4')
-    # engine.connect()
-    
-    # Get needed tables from DB
     meta_data = MetaData()
     meta_data.reflect(engine)
-    table_difficulty = meta_data.tables['difficulty']
-    table_grid = meta_data.tables['grid']
-    table_game = meta_data.tables['game']
-    table_turn = meta_data.tables['turn']
-    table_sample = meta_data.tables['sample']
-    table_finished_task = meta_data.tables['finished_task']
 
-    (_, (_, _, x)) = task_info
-    game_config = x['config']
-
-
-    # Inserts results into DB, all within a single transaction
-    with engine.begin() as connection:
-        for game_stats in results['games']:
-            difficuly_id = fetch_difficulty_id(connection, table_difficulty, game_config)
-            grid_id = store_grid_if_not_exists(connection, table_grid, game_stats, difficuly_id)
-            store_game_and_related_entities(connection, meta_data, game_stats, grid_id)
-            
-        store_finished_task(connection, table_finished_task, results)
-        
+    return (engine, meta_data)
 
 def store_grid_if_not_exists(connection, table_grid, game_stats, difficulty_id):
-    grid_mines = grid_to_binary(game_stats['grid_mines'])
+    # Extract game info needed for just the grid entity
+    game_seed = game_stats.pop('seed')
+    grid_mines = game_stats.pop('grid_mines')
+    grid_mines = grid_to_binary(grid_mines)
 
-    # Get grid id
+    # Look for grid entity and fetch its id
     query = select([table_grid.c.id]).where(
         and_(
             table_grid.c.difficulty_id == difficulty_id,
-            table_grid.c.seed == game_stats['seed'],
+            table_grid.c.seed == game_seed,
             table_grid.c.grid_mines == grid_mines,
             )
         )
     result = connection.execute(query).fetchone()
 
     if result is None:
-        # Insert grid into DB as it hasn't been inserted already
-        insert_grid = insert(table_grid).values(difficulty_id=difficulty_id, seed=game_stats['seed'], grid_mines=grid_mines)
+        # Grid hasn't been inserted yet, so insert it and get id
+        insert_grid = insert(table_grid).values(difficulty_id=difficulty_id, seed=game_seed, grid_mines=grid_mines)
         insert_grid.returning(table_grid.c.id)
-        insert_grid.prefix_with('ON DUPLICATE IGNORE')
         result = connection.execute(insert_grid)
         grid_id = result.lastrowid
     else:
@@ -301,54 +353,46 @@ def fetch_difficulty_id(connection, table_difficulty, game_config):
     result = connection.execute(query).fetchone()
     return result[0]
 
-def store_game_and_related_entities(connection, meta_data, game_stats, grid_id):
+def store_game_and_related_entities(connection, meta_data, game_stats):
     # Get table references
     table_game = meta_data.tables['game']
     table_turn = meta_data.tables['turn']
     table_sample = meta_data.tables['sample']
 
-
-
-    # Split out turns stats from game stats and insert game entity
+    # GAME - store and get id (to put into turn entities)
     turns_stats = game_stats.pop('turns')
-    game_stats['grid_id'] = grid_id
-    game_id = store_game_entity(connection, table_game, game_stats)
+    game_id = store_entity_and_return_id(connection, table_game, game_stats)
     
-
-    # Store turns of game and each turn's samples
     for turn_stats in turns_stats:
-        # Split out samples stats from turn stats and insert turn entity
-        samples_stats = turn_stats.pop('samples_stats')
         turn_stats['game_id'] = game_id
-        turn_id = store_turn_entity(connection, table_turn, turn_stats)
 
-        samples_stats = turn_stats['samples_stats']
-        store_samples(connection, table_sample, samples_stats, samples_stats, turn_id)
+        # TURN - store and get turn id (to put into sample entities)
+        samples_stats = turn_stats.pop('samples_stats')
+        turn_id = store_entity_and_return_id(connection, table_turn, turn_stats)
+        
+        for sample_stats in samples_stats:
+            sample_stats['turn_id'] = turn_id
 
-def store_game_entity(connection, table_game, game_stats):
-    game_stats['grid_mines'] = grid_to_binary(game_stats['grid_mines'])
+            # SAMPLE - store
+            convert_fields_and_store_sample(connection, table_sample, sample_stats)
 
-    return store_entity_and_return_id(connection, table_game, game_stats)
+def convert_fields_and_store_sample(connection, table_sample, sample_stats):
+    sample_stats['disjoint_sections_sizes'] = encode_disjoint_sections_sizes(sample_stats['disjoint_sections_sizes'])
+    sample_stats['has_wall'] = encode_has_wall(sample_stats['has_wall'])
+    return store_entity_and_return_id(connection, table_sample, sample_stats)
 
 def store_entity_and_return_id(connection, table, entity_dict):
     '''Input game stats show be a dict representing a single game entity
        where each (key, value) pair in the dict is a column name and that field's value.'''
-    insert_query = insert(table).values(entity_dict).returning(table.c.id)
-    return connection.execute(insert_query)
+    insert_query = insert(table).values(entity_dict)
+    result = connection.execute(insert_query)
+    return result.lastrowid
 
-
-# def store_turn_entity(connection, table_turn, turn_stats, game_id):
-#     return
-
-# def store_samples(connection, table_sample, samples_stats, turn_id):
-#     for sample_stats in samples_stats:
-#         pass
-#         # insert_sample_query = insert(table_sample).values()
-
-def store_finished_task(connection, table_finished_task, results):
-    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
-    connection.execute(insert_task_id)
-
+def encode_disjoint_sections_sizes(disjoint_sections_sizes):
+    ''' encoding is a string in format "x1,y1#x2,y2#...#xn,yn" where xi and yi are the
+        number of tiles in the fringe and frontier, respectively, of the i'th section
+        (n sections overall).'''
+    return bytes('#'.join(f'{frontier_len},{fringe_len}' for (frontier_len, fringe_len) in disjoint_sections_sizes), 'utf8')
 
 def grid_to_binary(grid):
     binary_grid = bitarray()
@@ -362,15 +406,25 @@ def grid_to_binary(grid):
 
     return binary_grid
 
-def grid_pos_to_binary(pos):
-    raise NotImplementedError("Stop using this. Store each value as a separate field in the database instead. Less complicated code, less hassle, less errors.")
-    (x, y) = pos
-    if x < 0 or x > 255 or y > 255 or y < 0:
-        raise ValueError("Input {pos} contains an int outside range 0-255. Cannot represent it in 8-bits!")
+def encode_has_wall(has_wall):
+    ''' Encoding format is binary string: 0000urdl, where each u,r,d,l is 1 if wall in that direction, 0 otherwise (u-up, r-right, d-down, l-left) '''
+    binary_has_wall = bitarray()
 
-    binary_string = "{0:08b}".format(x) + "{0:08b}".format(y)    # Two 8-digit binary strings, each representing integers x and y, concatenated.
-    return bitarray(binary_string)
+    # Pad with 4 zeros
+    for _ in range(4):
+        binary_has_wall.append(0)
 
+    binary_has_wall.append(has_wall['top'])
+    binary_has_wall.append(has_wall['right'])
+    binary_has_wall.append(has_wall['bottom'])
+    binary_has_wall.append(has_wall['left'])
+
+    return binary_has_wall
+
+
+def store_finished_task(connection, table_finished_task, results):
+    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
+    connection.execute(insert_task_id)
 
 def complete_task_and_return_results_including_game_info(task_info):
     start = time.time()
