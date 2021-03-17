@@ -1,0 +1,2 @@
+sample_size,use_num_mines_constraint,first_click_pos,num_games,verbose,visualise,agent_seed,run_seed,batch_size,num_processes
+,True,"(3, 3)",7500,False,False,20,2020,100,20
