@@ -307,30 +307,43 @@ def store_game_and_related_entities(connection, meta_data, game_stats, grid_id):
     table_turn = meta_data.tables['turn']
     table_sample = meta_data.tables['sample']
 
-    # Store game
-    game_id = store_game_entity(connection, table_game, game_stats, grid_id)
+
+
+    # Split out turns stats from game stats and insert game entity
+    turns_stats = game_stats.pop('turns')
+    game_stats['grid_id'] = grid_id
+    game_id = store_game_entity(connection, table_game, game_stats)
+    
 
     # Store turns of game and each turn's samples
-    for turn_stats in results['turns']:
-        turn_id = store_turn_entity(connection, table_turn, turn_stats, game_id)
+    for turn_stats in turns_stats:
+        # Split out samples stats from turn stats and insert turn entity
+        samples_stats = turn_stats.pop('samples_stats')
+        turn_stats['game_id'] = game_id
+        turn_id = store_turn_entity(connection, table_turn, turn_stats)
 
         samples_stats = turn_stats['samples_stats']
         store_samples(connection, table_sample, samples_stats, samples_stats, turn_id)
 
-def store_game_entity(connection, table_game, game_stats, grid_id):
-    return
-    # insert_game_query = insert(table_Game).values(
-    #     grid_id=grid_id,
-    #     win=
-    #     )
+def store_game_entity(connection, table_game, game_stats):
+    game_stats['grid_mines'] = grid_to_binary(game_stats['grid_mines'])
 
-def store_turn_entity(connection, table_turn, turn_stats, game_id):
-    return
+    return store_entity_and_return_id(connection, table_game, game_stats)
 
-def store_samples(connection, table_sample, samples_stats, turn_id):
-    for sample_stats in samples_stats:
-        pass
-        # insert_sample_query = insert(table_sample).values()
+def store_entity_and_return_id(connection, table, entity_dict):
+    '''Input game stats show be a dict representing a single game entity
+       where each (key, value) pair in the dict is a column name and that field's value.'''
+    insert_query = insert(table).values(entity_dict).returning(table.c.id)
+    return connection.execute(insert_query)
+
+
+# def store_turn_entity(connection, table_turn, turn_stats, game_id):
+#     return
+
+# def store_samples(connection, table_sample, samples_stats, turn_id):
+#     for sample_stats in samples_stats:
+#         pass
+#         # insert_sample_query = insert(table_sample).values()
 
 def store_finished_task(connection, table_finished_task, results):
     insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
@@ -350,7 +363,11 @@ def grid_to_binary(grid):
     return binary_grid
 
 def grid_pos_to_binary(pos):
+    raise NotImplementedError("Stop using this. Store each value as a separate field in the database instead. Less complicated code, less hassle, less errors.")
     (x, y) = pos
+    if x < 0 or x > 255 or y > 255 or y < 0:
+        raise ValueError("Input {pos} contains an int outside range 0-255. Cannot represent it in 8-bits!")
+
     binary_string = "{0:08b}".format(x) + "{0:08b}".format(y)    # Two 8-digit binary strings, each representing integers x and y, concatenated.
     return bitarray(binary_string)
 
