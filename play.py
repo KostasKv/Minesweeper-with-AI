@@ -8,7 +8,10 @@ from minesweeper_ai.agents.pick_first_uncovered_agent import PickFirstUncoveredA
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 from minesweeper_ai.agents.cbr_agent1 import CBRAgent1
 
-if __name__ == '__main__':
+def main():
+    main_play()
+
+def main_play():
     # Constants (configurables)
     profile = False
     benchmark = False
@@ -67,3 +70,7 @@ if __name__ == '__main__':
         results = minesweeper.run(solver_agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
     print("Program stopped.")
+
+if __name__ == '__main__':
+    main()
+    
