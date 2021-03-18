@@ -17,7 +17,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.first_click_pos = first_click_pos
         self.seed = seed
 
-        self.random = Random(seed)  # This might need changing before experimenting. (agent always picks same first tile between games. Not so random)
+        self.random = None
         self.samples_considered_already = set()
         self.sample_pos = None
         self.sure_moves_not_played_yet = set()
@@ -818,7 +818,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return valid_sure_moves
 
-    def onGameBegin(self):
+    def onGameBegin(self, game_seed):
         # Use full grid & boundaries if sample size is large enough to contain the full grid (or if set to None).
         # Instead of putting logic of deducing that the sample contains the full grid (thus its surroundings are boundaries, rather than unknown tiles)
         # in the solving algorithms, it's much easier to just default to a sample size that contains entire grid & boundaries in this case.
@@ -826,8 +826,8 @@ class NoUnnecessaryGuessSolver(Agent):
         use_full_grid = self.SAMPLE_SIZE is None or (self.SAMPLE_SIZE[0] >= len(self.grid) and self.SAMPLE_SIZE[1] >= len(self.grid[0]))
         if use_full_grid :
             self.SAMPLE_SIZE = (len(self.grid) + 2, len(self.grid[0]) + 2)
-
-        self.random = Random(self.seed)
+        
+        self.random = self.seed_random_engine_based_on_game_seed(game_seed)
         self.sure_moves_not_played_yet = set()
         self.samples_considered_already = set()
 
@@ -835,6 +835,15 @@ class NoUnnecessaryGuessSolver(Agent):
         self.num_guesses_for_game = 0
         self.turn_stats_this_game = []
         self.first_click_pos_this_game = None
+
+    def seed_random_engine_based_on_game_seed(self, game_seed):
+        ''' Adds a random number (based on game seed) to agent's seed. That new number is used to seed a random engine
+            that is to be used for this one game. '''
+        temp_random = Random(game_seed)
+        random_int = temp_random.randint(0, 2**12)
+
+        new_seed_for_this_game = self.seed + random_int
+        return Random(new_seed_for_this_game)
 
     @staticmethod
     def disjointSectionsToHighlights(sections):

@@ -14,7 +14,7 @@ sprites = {}
 
 
 class PygameRenderer(Renderer):
-    def __init__(self, config, grid, agent):
+    def __init__(self, config, grid, agent, game_seed):
         self.agent = agent
         self.game_config = config
 
@@ -44,13 +44,13 @@ class PygameRenderer(Renderer):
         self.NO_TIMER = 0
         self.ACTION_RESET_GAME = -1
 
-        self.initialise()
+        self.initialise(game_seed)
 
-    def initialise(self):
+    def initialise(self, game_seed):
         self.loadSprites()
         self.initialiseScreenAndBackground()
         self.initialiseObjects()
-        self.initialiseAgent()
+        self.initialiseAgent(game_seed)
 
     def initialiseScreenAndBackground(self):
         pygame.init()
@@ -158,10 +158,10 @@ class PygameRenderer(Renderer):
         self.illegal_move_tint = IllegalMoveTint(grid_rect)
         self.things_to_draw.append(self.illegal_move_tint_group)
 
-    def initialiseAgent(self):
+    def initialiseAgent(self, game_seed):
         if self.agent:
             self.agent.update(self.grid, self.mines_left, self.game_state)
-            self.agent.onGameBegin()
+            self.agent.onGameBegin(game_seed)
             self.agent.feedRenderer(self)
             pygame.time.set_timer(self.PLAY_AGENT_MOVE_EVENT, self.AGENT_TIME_BETWEEN_MOVES)           
 
@@ -339,7 +339,7 @@ class PygameRenderer(Renderer):
 
         pygame.display.flip()
 
-    def updateFromResult(self, result):
+    def updateFromResult(self, result, game_seed):
         self.grid, self.mines_left, self.game_state = result
 
         for y, row in enumerate(self.grid):
@@ -354,7 +354,7 @@ class PygameRenderer(Renderer):
             self.agent.update(self.grid, self.mines_left, self.game_state)
 
             if self.game_state == _Game.State.START:
-                self.agent.onGameBegin()
+                self.agent.onGameBegin(game_seed)
         
         if self.game_state in [_Game.State.LOSE, _Game.State.WIN, _Game.State.ILLEGAL_MOVE]:
             pygame.time.set_timer(self.CLOCK_TICK_EVENT, self.NO_TIMER)    # Stop the clock by disabling timer event

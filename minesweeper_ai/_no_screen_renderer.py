@@ -2,18 +2,18 @@ from .renderer import Renderer
 from ._game import _Game
 
 class NoScreenRenderer(Renderer):
-    def __init__(self, config, grid, agent):
+    def __init__(self, config, grid, agent, game_seed):
         self.config = config
         self.grid = grid
         self.agent = agent
         self.game_state = _Game.State.START
         
-        self.initialiseAgent()
+        self.initialiseAgent(game_seed)
 
 
-    def initialiseAgent(self):
+    def initialiseAgent(self, game_seed):
         self.agent.update(self.grid, self.config['num_mines'], self.game_state)
-        self.agent.onGameBegin()
+        self.agent.onGameBegin(game_seed)
 
 
     def getNextMove(self):
@@ -23,12 +23,12 @@ class NoScreenRenderer(Renderer):
             return -1     # End of game so signal for game reset
 
     
-    def updateFromResult(self, result):
+    def updateFromResult(self, result, game_seed):
         self.game_state = result[2]
         self.agent.update(*result)
 
         if self.game_state == _Game.State.START:
-            self.agent.onGameBegin()
+            self.agent.onGameBegin(game_seed)
 
 
     def onEndOfGames(self):

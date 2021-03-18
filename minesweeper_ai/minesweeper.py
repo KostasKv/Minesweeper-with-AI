@@ -23,9 +23,9 @@ def run(agent=None, config={'rows':8, 'columns':8, 'num_mines':10, 'first_click_
         executor = _Executor(game, num_games, seed=seed)
 
     if visualise:
-        renderer = PygameRenderer(config, game.grid, agent)
+        renderer = PygameRenderer(config, game.grid, agent, executor.current_game_seed)
     else:
-        renderer = NoScreenRenderer(config, game.grid, agent)
+        renderer = NoScreenRenderer(config, game.grid, agent, executor.current_game_seed)
 
     return playGames(executor, renderer, verbose)
 
@@ -52,7 +52,7 @@ def playGames(executor, renderer, verbose):
 
         stats = update_stats_from_action_result(stats, result, renderer, executor)
 
-        renderer.updateFromResult(result)
+        renderer.updateFromResult(result, executor.current_game_seed)
         action = renderer.getNextMove()
         result = executor.make_move(action)
 
