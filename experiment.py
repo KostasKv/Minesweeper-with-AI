@@ -21,12 +21,28 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    experiment = getExperiment4()
-    batch_size = 10
-    num_processes = 6
+    experiment = getExperiment2()
 
-    runExperiment(experiment, batch_size, num_processes)
+    batch_sizes = [1, 5, 25, 100]
+    num_processes_range = [8, 10, 12, 14]
 
+    times = []
+    batch_sizes_and_num_processess_combos = list(itertools.product(batch_sizes, num_processes_range))
+    for (i, (batch_size, num_processes)) in enumerate(batch_sizes_and_num_processess_combos):
+        start = time.time()
+        runExperiment(experiment, batch_size, num_processes)
+        end = time.time()
+
+        times_result_entry = {
+            'batch_size': batch_size,
+            'num_processes': num_processes,
+            'time_elapsed': end - start,
+        }
+        times.append(times_result_entry)
+
+        print(f"{i}/{len(batch_sizes_and_num_processess_combos)} batch size & processes num combos complete\n")
+
+    saveDictRowsAsCsv(times, experiment['title'] + ' times')
 
 def runExperiment(experiment, batch_size, num_processes):
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes)
@@ -188,9 +204,11 @@ def fetch_finished_task_ids():
     # Get all finished task ids from database
     with engine.begin() as connection:
         select_query = select([table_finished_task.c.id]).order_by(table_finished_task.c.id)
-        finished_task_ids = connection.execute(select_query).fetchall()
+        # finished_task_ids = connection.execute(select_query).fetchall()
     
-    return [task_id for (task_id,) in finished_task_ids]
+    # TODO: DELETE DIS.     USED JUST FOR BATCH V PROCESSES EXPERIMENT
+    return []
+    # return [task_id for (task_id,) in finished_task_ids]
 
 def onEndOfExperiment(experiment, all_results, constants):
     # Save experiment constants info as seperate file
@@ -287,10 +305,11 @@ def store_task_results_in_database(results, task_info):
     # Inserts tasks results into DB, all within a single transaction
     with engine.begin() as connection:
         # Note this has to be done first so that each inserted game entity can reference this task (with task id)
-        store_finished_task(connection, table_finished_task, results)
+        task_id = store_finished_task(connection, table_finished_task, results)
 
         for game_stats in results['games']:
-            game_stats['task_id'] = results['task_id']
+            # game_stats['task_id'] = results['task_id']
+            game_stats['task_id'] = task_id
 
             difficuly_id = fetch_difficulty_id(connection, table_difficulty, game_config)
             grid_id = store_grid_if_not_exists(connection, table_grid, game_stats, difficuly_id)
@@ -301,12 +320,12 @@ def store_task_results_in_database(results, task_info):
 def get_database_engine_and_reflected_meta_data():
     # bank account details
     user = "cokk"
-    # topsecretword = "8iCyrvxoK4RMitkZ" 
-    # host = "lnx-cokk-1.lunet.lboro.ac.uk"
+    topsecretword = "8iCyrvxoK4RMitkZ" 
+    host = "lnx-cokk-1.lunet.lboro.ac.uk"
     db_name = "cokk"
 
-    topsecretword = "password"
-    host = "localhost"
+    # topsecretword = "password"
+    # host = "localhost"
 
     engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4')
     meta_data = MetaData()
@@ -423,8 +442,10 @@ def encode_has_wall(has_wall):
 
 
 def store_finished_task(connection, table_finished_task, results):
-    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
-    connection.execute(insert_task_id)
+    # TODO: DELETE DIS.  CHANGED JUST FOR BATCH NUM & PROCESSES COUNT EXPERIMENT
+    # insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
+    insert_task_id = insert(table_finished_task).values(id=0, pid=results['pid'])
+    return connection.execute(insert_task_id).lastrowid
 
 def complete_task_and_return_results_including_game_info(task_info):
     start = time.time()
@@ -589,7 +610,7 @@ def getExperiment2():
     '''
 
     # title = "Solver verification experiment"
-    title = "Batch size and processes count experiment" # Temp renaming for other experiment (hijacking this old experiment)
+    title = "Batch size and processes count experiment (DB)" # Temp renaming for other experiment (hijacking this old experiment)
 
     agent_parameters = {
         'variable': {
@@ -599,7 +620,8 @@ def getExperiment2():
             'seed': 20,
             'sample_size': None,  # Sample size None means use full grid
             'use_num_mines_constraint': True,
-            'first_click_pos': (3, 3),
+            # 'first_click_pos': (3, 3),
+            'first_click_pos': None
         }
     }
 
@@ -613,15 +635,17 @@ def getExperiment2():
         },
         'constant': {
             # 'num_games': 50000,
-            'num_games': 7500,   # temp for batch size & process count experiment
+            'num_games': 3000,   # temp for batch size & process count experiment
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
         }
     }
 
-    task_handler = complete_task_and_return_results_including_game_info
-    on_finish = saveResultsToCsv
+    # task_handler = complete_task_and_return_results_including_game_info
+    # on_finish = saveResultsToCsv
+    task_handler = task_handler_store_results_in_database_on_task_finish
+    on_finish = None
 
     experiment = {
         'title': title,
