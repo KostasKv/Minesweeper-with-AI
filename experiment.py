@@ -26,7 +26,7 @@ def main():
     batch_size = 5
     num_processes = psutil.cpu_count(logical=True)  # Use however many logical cores there are on the machine
 
-    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=False)
+    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True)
 
 
 def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True):
@@ -37,12 +37,12 @@ def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=Tru
 
     task_handler = experiment['task_handler']
     
-    # # Run experiment tasks with multiple processes running in parallel
-    # with Pool(processes=num_processes) as p:
-    #     all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
+    # Run experiment tasks with multiple processes running in parallel
+    with Pool(processes=num_processes) as p:
+        all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
 
-    # single-process run for DEBUG pursposes
-    all_results = [task_handler(task_info) for task_info in tasks_info]
+    # DEBUG: single-process run to allow for easier debug sessions
+    # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -151,6 +151,12 @@ def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
     batched_tasks_grouped_by_parameter = []
 
     for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
+        # SKIP NON-NULL SAMPLE SIZES THAT ARE LARGE ENOUGH TO CONTAIN ENTIRE GRID (assuming here that sample size None is one of the param choices)
+        # AS THEY WILL GET THE EXACT SAME RESULTS AS THE FULL-GRID SAMPLE (denoted by sample size None)
+        skip_parameters = is_sample_size_redundant(agent_parameters['sample_size'], other_parameters['config'])
+        if skip_parameters:
+            continue
+
         tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=batch_size)
         
         # Sticking on the parameters_id to each task so the results from all the tasks 
@@ -161,6 +167,13 @@ def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
     interleaved_tasks = more_itertools.roundrobin(*batched_tasks_grouped_by_parameter)
     interleaved_tasks_with_task_id = [(task_id, param_id, task) for (task_id, (param_id, task)) in enumerate(interleaved_tasks, 1)]
     return interleaved_tasks_with_task_id
+
+def is_sample_size_redundant(sample_size, game_config):
+    if sample_size is None:
+        return False    # None means full grid, and those are the non-redundant ones that are to be run.
+
+    sample_rows, sample_cols = sample_size
+    return sample_rows >= game_config['rows'] and sample_cols >= game_config['columns']
 
 def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
     ''' Batch size is the number of games to play for a task. '''
@@ -606,8 +619,7 @@ def getExperiment2():
         - ~16% Expert 
     '''
 
-    # title = "Solver verification experiment"
-    title = "Batch size and processes count experiment" # Temp renaming for other experiment (hijacking this old experiment)
+    title = "Solver verification experiment"
 
     agent_parameters = {
         'variable': {
@@ -630,8 +642,7 @@ def getExperiment2():
             ],
         },
         'constant': {
-            # 'num_games': 50000,
-            'num_games': 7500,   # temp for batch size & process count experiment
+            'num_games': 50000,
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
@@ -734,8 +745,7 @@ def getExperiment4():
             ],
         },
         'constant': {
-            # 'num_games': 100000,
-            'num_games': 10,
+            'num_games': 100000,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
