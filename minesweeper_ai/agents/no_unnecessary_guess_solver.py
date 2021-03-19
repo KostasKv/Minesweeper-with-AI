@@ -311,7 +311,7 @@ class NoUnnecessaryGuessSolver(Agent):
         '''encoding is a string in format "x1,y1#x2,y2#...#xn,yn" where xi and yi are the
            number of tiles in the fringe and frontier, respectively, of the i'th section
            (n sections overall).'''
-        return [map(len, frontier_and_fringe_tuple) for frontier_and_fringe_tuple in disjoint_sections]
+        return [(len(frontier), len(fringe)) for (frontier, fringe) in disjoint_sections]
 
     @staticmethod
     def count_num_uncovered_tiles(tiles):

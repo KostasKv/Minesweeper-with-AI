@@ -14,7 +14,7 @@ import more_itertools
 from sqlalchemy import create_engine, MetaData, insert, select
 from sqlalchemy.sql import and_
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from bitarray import bitarray
 
 from minesweeper_ai import minesweeper
@@ -41,7 +41,7 @@ def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=Tru
     with Pool(processes=num_processes) as p:
         all_results = list(tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info)))
 
-    # DEBUG: single-process run to allow for easier debug sessions
+    # # DEBUG: single-process run to allow for easier debug sessions
     # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
@@ -297,10 +297,26 @@ def task_handler_store_results_in_database_on_task_finish(task_info):
 
 def store_task_results_in_database(results, task):
     (engine, meta_data) = get_database_engine_and_reflected_meta_data()
-
     game_config = extract_game_config_from_task(task)
+    transaction_attempts_left = 10
+    transaction_not_complete = True
+    error = None
 
-    # Inserts tasks results into DB, all within a single transaction
+    while transaction_not_complete and transaction_attempts_left > 0:
+        try:
+            store_results_in_single_transaction(results, game_config, engine, meta_data)
+            transaction_not_complete = False
+        except OperationalError as e:
+            # Deadlock detected. Retry transaction 
+            transaction_attempts_left -= 1
+            error = e   # Keep track of error incase all attempts fail
+    
+    if transaction_attempts_left < 0:
+        raise error # All transaction attempts failed. Proceed to panic.
+
+    engine.dispose()
+
+def store_results_in_single_transaction(results, game_config, engine, meta_data): 
     with Session(engine, future=True) as session:
         # Finished task entity has to be stored first so that each inserted game entity can reference this task (with task id)
         store_finished_task(session, meta_data, results)
@@ -314,8 +330,6 @@ def store_task_results_in_database(results, task):
             
         
         session.commit()
-
-    engine.dispose()
             
 def get_database_engine_and_reflected_meta_data():
     # bank account details
@@ -351,8 +365,8 @@ def store_grid_if_not_exists(session, meta_data, game_config, game_stats):
     difficulty_id = fetch_difficulty_id(session, table_difficulty, game_config)
 
     # Extract game info needed for just the grid entity
-    game_seed = game_stats.pop('seed')
-    grid_mines = game_stats.pop('grid_mines')
+    game_seed = game_stats['seed']
+    grid_mines = game_stats['grid_mines']
     grid_mines = grid_to_binary(grid_mines)
     
     try:
@@ -393,26 +407,27 @@ def store_game_and_turns_and_samples(session, meta_data, game_stats):
     table_sample = meta_data.tables['sample']
 
     # GAME - store and get id (to put into turn entities)
-    turns_stats = game_stats.pop('turns')
-    game_id = store_entity_and_return_id(session, table_game, game_stats)
+    game_attributes = {k: v for (k, v) in game_stats.items() if k not in ['seed', 'grid_mines', 'turns']}
+    game_id = store_entity_and_return_id(session, table_game, game_attributes)
     
-    for turn_stats in turns_stats:
-        turn_stats['game_id'] = game_id
-
+    for turn_stats in game_stats['turns']:
         # TURN - store and get turn id (to put into sample entities)
-        samples_stats = turn_stats.pop('samples_stats')
-        turn_id = store_entity_and_return_id(session, table_turn, turn_stats)
+        turn_attributes = {k: v for (k, v) in turn_stats.items() if k != 'samples_stats'}
+        turn_attributes['game_id'] = game_id
+        turn_id = store_entity_and_return_id(session, table_turn, turn_attributes)
         
-        for sample_stats in samples_stats:
+        for sample_stats in turn_stats['samples_stats']:
             sample_stats['turn_id'] = turn_id
 
             # SAMPLE - store
             convert_fields_and_store_sample(session, table_sample, sample_stats)
 
 def convert_fields_and_store_sample(session, table_sample, sample_stats):
-    sample_stats['disjoint_sections_sizes'] = encode_disjoint_sections_sizes(sample_stats['disjoint_sections_sizes'])
-    sample_stats['has_wall'] = encode_has_wall(sample_stats['has_wall'])
-    return store_entity_and_return_id(session, table_sample, sample_stats)
+    sample_attributes = {k: v for (k, v) in sample_stats.items() if k not in ['disjoint_sections_sizes', 'has_wall']}
+    sample_attributes['disjoint_sections_sizes'] = encode_disjoint_sections_sizes(sample_stats['disjoint_sections_sizes'])
+    sample_attributes['has_wall'] = encode_has_wall(sample_stats['has_wall'])
+    
+    return store_entity_and_return_id(session, table_sample, sample_attributes)
 
 def store_entity_and_return_id(session, table, entity_dict):
     '''Input game stats show be a dict representing a single game entity
@@ -746,7 +761,7 @@ def getExperiment4():
         },
         'constant': {
             # 'num_games': 100000,
-            'num_games': 50,
+            'num_games': 250,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
