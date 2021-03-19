@@ -52,7 +52,7 @@ def experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes,
     parameter_grid, constants = getSplitParameterGridAndConstants(experiment)
     constants['batch_size'] = batch_size
     constants['num_processes'] = num_processes
-    tasks = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
+    tasks, num_param_combos = createTasksFromSplitParameterGrid(parameter_grid, batch_size)
     print("DONE")
 
     num_all_tasks = len(tasks)
@@ -77,12 +77,10 @@ def experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes,
         finished_task_ids = []
 
     print("Experiment ready to run.\n\n")
-
-    num_combinations = len(parameter_grid)
     num_games = constants['num_games']
-    total_games = num_games * num_combinations
+    total_games = num_games * num_param_combos
 
-    print("Running {} games for each of {} different parameter combinations...".format(num_games, num_combinations))
+    print("Running {} games for each of {} different parameter combinations...".format(num_games, num_param_combos))
     if finished_task_ids:
         games_left = total_games - (batch_size * len(finished_task_ids))
         print(f"\nTotal games: {total_games}\tTotal tasks: {num_all_tasks}")
@@ -149,6 +147,7 @@ def getSplitParameterGridAndConstants(experiment):
 
 def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
     batched_tasks_grouped_by_parameter = []
+    num_param_combos = 0
 
     for (parameters_id, (agent_parameters, other_parameters)) in enumerate(parameter_grid, 1):
         # SKIP NON-NULL SAMPLE SIZES THAT ARE LARGE ENOUGH TO CONTAIN ENTIRE GRID (assuming here that sample size None is one of the param choices)
@@ -156,7 +155,8 @@ def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
         skip_parameters = is_sample_size_redundant(agent_parameters['sample_size'], other_parameters['config'])
         if skip_parameters:
             continue
-
+            
+        num_param_combos += 1
         tasks = createTasksFromParameters(agent_parameters, other_parameters, batch_size=batch_size)
         
         # Sticking on the parameters_id to each task so the results from all the tasks 
@@ -166,7 +166,7 @@ def createTasksFromSplitParameterGrid(parameter_grid, batch_size):
 
     interleaved_tasks = more_itertools.roundrobin(*batched_tasks_grouped_by_parameter)
     interleaved_tasks_with_task_id = [(task_id, param_id, task) for (task_id, (param_id, task)) in enumerate(interleaved_tasks, 1)]
-    return interleaved_tasks_with_task_id
+    return interleaved_tasks_with_task_id, num_param_combos
 
 def is_sample_size_redundant(sample_size, game_config):
     if sample_size is None:
@@ -210,7 +210,7 @@ def fetch_finished_task_ids():
         select_query = select([table_finished_task.c.id]).order_by(table_finished_task.c.id)
         finished_task_ids = connection.execute(select_query).fetchall()
 
-        connection.close()
+    engine.dispose()
     
     return [task_id for (task_id,) in finished_task_ids]
 
@@ -293,7 +293,7 @@ def task_handler_store_results_in_database_on_task_finish(task_info):
     results['pid'] = current_process().pid
     results['task_id'] = task_id
     
-    # store_task_results_in_database(results, task)
+    store_task_results_in_database(results, task)
 
 def store_task_results_in_database(results, task):
     (engine, meta_data) = get_database_engine_and_reflected_meta_data()
@@ -320,12 +320,12 @@ def store_task_results_in_database(results, task):
 def get_database_engine_and_reflected_meta_data():
     # bank account details
     user = "cokk"
-    # topsecretword = "8iCyrvxoK4RMitkZ" 
-    # host = "lnx-cokk-1.lunet.lboro.ac.uk"
+    topsecretword = "8iCyrvxoK4RMitkZ" 
+    host = "lnx-cokk-1.lunet.lboro.ac.uk"
     db_name = "cokk"
 
-    topsecretword = "password"
-    host = "localhost"
+    # topsecretword = "password"
+    # host = "localhost"
 
     engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4', isolation_level='SERIALIZABLE')
     meta_data = MetaData()
@@ -745,7 +745,8 @@ def getExperiment4():
             ],
         },
         'constant': {
-            'num_games': 100000,
+            # 'num_games': 100000,
+            'num_games': 50,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
