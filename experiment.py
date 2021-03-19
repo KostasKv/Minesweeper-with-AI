@@ -33,7 +33,7 @@ def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=Tru
     (tasks_info, constants) = experimentPrepAndGetTasksAndConstants(experiment, batch_size, num_processes, skip_complete_tasks)
 
     if tasks_info is None:
-        return  # All tasks already finished. End program.
+        return  # All tasks already finished & skipped. End program.
 
     task_handler = experiment['task_handler']
     
@@ -266,7 +266,7 @@ def appendToFileName(name, suffix):
     return name + suffix + ext
 
 def task_handler_store_results_in_database_on_task_finish(task_info):
-    ''' Warning: Only for use with main experiment! Not configured to work for
+    ''' Warning: Only for use with main experiment! Not configured to work with
         any other experiment.'''
     
     # unpack
@@ -324,6 +324,11 @@ def extract_game_config_from_task(task):
     (_, _, x) = task
     return x['config']
 
+def store_finished_task(session, meta_data, results):
+    table_finished_task = meta_data.tables['finished_task']
+    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
+    session.execute(insert_task_id)
+
 def store_grid_if_not_exists(session, meta_data, game_config, game_stats):
     # Get tables required
     table_difficulty = meta_data.tables['difficulty']
@@ -343,10 +348,6 @@ def store_grid_if_not_exists(session, meta_data, game_config, game_stats):
         result = session.execute(insert_grid)
         grid_id = result.lastrowid
     except IntegrityError:
-        # meta_data = MetaData(engine)
-        # meta_data.reflect()
-        # table_grid = meta_data.tables['grid']
-
         # This specific grid already exists in the database. Let's fetch its id.
         query = select([table_grid.c.id]).where(
             and_(
@@ -356,12 +357,6 @@ def store_grid_if_not_exists(session, meta_data, game_config, game_stats):
                 )
             )
         result = session.execute(query).fetchone()
-
-        # if result is None:
-        #     print(f"first_click_pos: ({game_stats['first_click_pos_x']}, {game_stats['first_click_pos_y']}")
-        #     print(f"SELECT * FROM grid WHERE difficulty_id={difficulty_id} AND seed={game_seed} AND grid_mines={'0x' + grid_mines.hex()}")
-        #     print(f"INSERT INTO grid VALUES (6999, {difficulty_id}, {game_seed}, {'0x' + grid_mines.hex()}")
-        #     abc = 5
 
         grid_id = result[0]
 
@@ -413,12 +408,6 @@ def store_entity_and_return_id(session, table, entity_dict):
     result = session.execute(insert_query)
     return result.lastrowid
 
-def encode_disjoint_sections_sizes(disjoint_sections_sizes):
-    ''' encoding is a string in format "x1,y1#x2,y2#...#xn,yn" where xi and yi are the
-        number of tiles in the fringe and frontier, respectively, of the i'th section
-        (n sections overall).'''
-    return bytes('#'.join(f'{frontier_len},{fringe_len}' for (frontier_len, fringe_len) in disjoint_sections_sizes), 'utf8')
-
 def grid_to_binary(grid):
     binary_grid = bitarray()
 
@@ -430,6 +419,13 @@ def grid_to_binary(grid):
                 binary_grid.append(False)
 
     return binary_grid.tobytes()
+
+def encode_disjoint_sections_sizes(disjoint_sections_sizes):
+    ''' encoding is a string in format "x1,y1#x2,y2#...#xn,yn" where xi and yi are the
+        number of tiles in the fringe and frontier, respectively, of the i'th section
+        (n sections overall).'''
+    return bytes('#'.join(f'{frontier_len},{fringe_len}' for (frontier_len, fringe_len) in disjoint_sections_sizes), 'utf8')
+
 
 def encode_has_wall(has_wall):
     ''' Encoding format is binary string: 0000urdl, where each u,r,d,l is 1 if wall in that direction, 0 otherwise (u-up, r-right, d-down, l-left) '''
@@ -447,10 +443,6 @@ def encode_has_wall(has_wall):
     return binary_has_wall
 
 
-def store_finished_task(session, meta_data, results):
-    table_finished_task = meta_data.tables['finished_task']
-    insert_task_id = insert(table_finished_task).values(id=results['task_id'], pid=results['pid'])
-    session.execute(insert_task_id)
 
 def complete_task_and_return_results_including_game_info(task_info):
     start = time.time()
