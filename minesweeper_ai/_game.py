@@ -73,7 +73,48 @@ class _Game:
             adj_tiles = self.get_adjacent_tile_coords(*clicked_tile_coords)
             no_mine_tiles.extend(adj_tiles)
         
-        self._populateGrid(no_mine_tiles, self.seed)
+        # self._populateGrid(no_mine_tiles, self.seed)
+        self._TEMP_LOAD_BUGGY_GRID_FOR_LINEAR_EQUATIONS_SOLVER()
+    
+    def _TEMP_LOAD_BUGGY_GRID_FOR_LINEAR_EQUATIONS_SOLVER(self):
+        print("_TEMP_LOAD_BUGGY_GRID_FOR_LINEAR_EQUATIONS_SOLVER")
+        with open('buggy_game.txt', 'r') as f:
+            game_tiles_data = f.readlines()
+        
+        
+        # Note this only has info as player can see it
+        # which means underlying mines are not known. Need to manually add in hidden
+        # mines afterwards.
+        for (y, row) in enumerate(game_tiles_data):
+            row = row.rstrip('\n')
+
+            for (x, tile) in enumerate(row):
+                if tile == '@':
+                    self.grid[y][x].is_flagged = True
+                    self.grid[y][x].is_mine = True
+                # elif tile == '.':
+                #     self.grid[y][x].num_adjacent_mines = 0
+                elif tile == '#':
+                    self.grid[y][x].uncovered = False
+                else:
+                    self.grid[y][x].uncovered = True
+                # else:
+                #     self.grid[y][x].num_adjacent_mines = int(tile)
+
+        # Add own guesses of where hidden mines are (based on how board looks)
+        # Any valid configuration will do.
+        self.grid[0][4].is_mine = True
+        self.grid[2][2].is_mine = True
+        # self.grid[1][3].is_mine = True
+        self.grid[2][3].is_mine = True
+        self.grid[3][0].is_mine = True
+        self.grid[12][0].is_mine = True
+        self.grid[14][2].is_mine = True
+        self.grid[15][2].is_mine = True
+        self.grid[13][9].is_mine = True
+
+        # Fill in numbers on tiles
+        self._markGridSquaresWithMineProximityCount()
 
     def _populateGrid(self, excluded_tiles_coords, seed):
         self._populateGridWithMines(excluded_tiles_coords, seed)

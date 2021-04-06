@@ -5,6 +5,7 @@ from ._game import _Game
 from._executor import _Executor
 from ._pygame_renderer import PygameRenderer
 from ._no_screen_renderer import NoScreenRenderer
+from .agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 
 # For use in method 'update_stats_from_action_result'. Just need this to persist between function calls so we can time game durations.
 game_start_time = None
@@ -85,27 +86,28 @@ def update_stats_from_action_result(stats, result, renderer, executor):
     if _Game.is_end_of_game_state(state):
         game_end_time = time.time()
 
-        game_stats = {
-            'seed': executor.current_game_seed,
-            'grid_mines': grid,
-            'win': state == _Game.State.WIN,
-            'seconds_elapsed': game_end_time - game_start_time,
-            'sample_width': renderer.agent.SAMPLE_SIZE[1],
-            'sample_height': renderer.agent.SAMPLE_SIZE[0],
-            'use_mine_count': renderer.agent.use_num_mines_constraint,
-            'first_click_always_zero': executor.get_game_config()['first_click_is_zero'],
-            'num_guesses': renderer.agent.num_guesses_for_game,
-            'first_click_pos_x': renderer.agent.first_click_pos_this_game[0],
-            'first_click_pos_y': renderer.agent.first_click_pos_this_game[1],
-            'turns': renderer.agent.get_game_turns_stats(),
-        }
+        if isinstance(renderer.agent, NoUnnecessaryGuessSolver):
+            game_stats = {
+                'seed': executor.current_game_seed,
+                'grid_mines': grid,
+                'win': state == _Game.State.WIN,
+                'seconds_elapsed': game_end_time - game_start_time,
+                'sample_width': renderer.agent.SAMPLE_SIZE[1],
+                'sample_height': renderer.agent.SAMPLE_SIZE[0],
+                'use_mine_count': renderer.agent.use_num_mines_constraint,
+                'first_click_always_zero': executor.get_game_config()['first_click_is_zero'],
+                'num_guesses': renderer.agent.num_guesses_for_game,
+                'first_click_pos_x': renderer.agent.first_click_pos_this_game[0],
+                'first_click_pos_y': renderer.agent.first_click_pos_this_game[1],
+                'turns': renderer.agent.get_game_turns_stats(),
+            }
 
-        stats['games'].append(game_stats)
-        
-        if state == _Game.State.WIN:
-            stats['wins'] += 1
-            if game_stats['num_guesses'] == 0:
-                stats['wins_without_guess'] += 1
+            stats['games'].append(game_stats)
+            
+            if state == _Game.State.WIN:
+                stats['wins'] += 1
+                if game_stats['num_guesses'] == 0:
+                    stats['wins_without_guess'] += 1
 
     return stats
 
