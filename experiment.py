@@ -334,12 +334,12 @@ def store_results_in_single_transaction(results, game_config, engine, meta_data)
 def get_database_engine_and_reflected_meta_data():
     # bank account details
     user = "cokk"
-    topsecretword = "8iCyrvxoK4RMitkZ" 
-    host = "lnx-cokk-1.lunet.lboro.ac.uk"
+    # topsecretword = "8iCyrvxoK4RMitkZ" 
+    # host = "lnx-cokk-1.lunet.lboro.ac.uk"
     db_name = "cokk"
 
-    # topsecretword = "password"
-    # host = "localhost"
+    topsecretword = "password"
+    host = "localhost"
 
     engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4', isolation_level='SERIALIZABLE')
     meta_data = MetaData()
@@ -761,7 +761,7 @@ def getExperiment4():
         },
         'constant': {
             # 'num_games': 100000,
-            'num_games': 250,
+            'num_games': 1000,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
