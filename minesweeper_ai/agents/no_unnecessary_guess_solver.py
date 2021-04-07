@@ -63,6 +63,13 @@ class NoUnnecessaryGuessSolver(Agent):
             # Try again, this time try every sample that could possibly give sure moves.
             sure_moves = self.lookForSureMovesFromAllUsefulGridSamples(self.SAMPLE_SIZE)
         
+        # TEST PURPOSES
+        sure_moves_ALL_SAMPLES = self.lookForSureMovesFromAllSamples(self.SAMPLE_SIZE)
+
+        if x := sure_moves_ALL_SAMPLES ^ sure_moves:
+            print(x)
+            y = 5
+
         if sure_moves:
             move = sure_moves.pop()
             self.sure_moves_not_played_yet.update(sure_moves)
@@ -74,6 +81,7 @@ class NoUnnecessaryGuessSolver(Agent):
             self.num_guesses_for_game += 1
 
         return move
+
 
     def get_turn_stats(self, turn_decision_time):
         turn_stats_to_store = {
@@ -101,23 +109,45 @@ class NoUnnecessaryGuessSolver(Agent):
     # program run time is then split in two between these two, rather than being stuck together under one
     # method name and so their seperate run times are hard to distinguish.
     def lookForSureMovesFromGridSamplesFocussedOnGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=True)
+        samples = self.getUsefulSampleAreasFromGrid(sample_size, limit_search_to_frontier=True)
+        return self.lookForSureMovesFromGridSamples(samples)
 
     def lookForSureMovesFromAllUsefulGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=False)
+        samples = self.getUsefulSampleAreasFromGrid(sample_size, limit_search_to_frontier=False)
+        return self.lookForSureMovesFromGridSamples(samples)
 
-    def lookForSureMovesFromGridSamples(self, size, limit_search_to_frontier=False):
-        samples = self.getUsefulSampleAreasFromGrid(size, limit_search_to_frontier=limit_search_to_frontier)
+    def lookForSureMovesFromAllSamples(self, sample_size):
+        ''' Copy pasta of lookForSureMovesFromGridSamples but using ALL possible samples '''
+        samples = self.getAllSamples(sample_size)
+        return self.lookForSureMovesFromGridSamples(samples, use_sample_hashes_to_skip=False)
 
+    def getAllSamples(self, sample_size):
+        (sample_rows, sample_cols) = sample_size
+        min_x = -1
+        min_y = -1
+        max_x = len(self.grid[0]) - sample_cols + 1
+        max_y = len(self.grid) - sample_rows + 1
+
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                pos = (x, y)
+                sample = self.getSampleAtPosition(pos, sample_size, self.grid)
+                yield (sample, pos)
+
+    def lookForSureMovesFromGridSamples(self, samples, use_sample_hashes_to_skip=True):
         for (sample, sample_pos) in samples:
-            sample_hash = self.getSampleHash(sample, sample_pos)
-            
-            if sample_hash not in self.samples_considered_already:
-                self.samples_considered_already.add(sample_hash)
-                sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
+            if use_sample_hashes_to_skip:
+                sample_hash = self.getSampleHash(sample, sample_pos)
+                
+                if sample_hash in self.samples_considered_already:
+                    continue
 
-                if sure_moves:
-                    return sure_moves
+                self.samples_considered_already.add(sample_hash)
+
+            sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
+
+            if sure_moves:
+                return sure_moves
                     
         # No sure moves found
         return set()

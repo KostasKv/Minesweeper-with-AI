@@ -22,8 +22,8 @@ def main_play():
     benchmark = False
     num_games_profile = 100
     num_games_benchmark = 10
-    num_games_other = 10
-    config = {'rows': 16, 'columns': 30, 'num_mines': 40, 'first_click_is_zero': False}
+    num_games_other = 100000
+    config = {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True}
     run_seed = 40   # Same run seed as main experiment
     agent_seed = 4040   # Same agent seed as main experiment
     sample_size = None
@@ -75,7 +75,7 @@ def main_play():
         if human_player:
             agent = None
         
-        results = minesweeper.run(agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
+        results = minesweeper.run(agent, config=config, visualise=False, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
     print("Program stopped.")
 
