@@ -22,7 +22,7 @@ def main_play():
     benchmark = False
     num_games_profile = 100
     num_games_benchmark = 10
-    num_games_other = 1
+    num_games_other = 10
     config = {'rows': 16, 'columns': 30, 'num_mines': 40, 'first_click_is_zero': False}
     run_seed = 40   # Same run seed as main experiment
     agent_seed = 4040   # Same agent seed as main experiment
@@ -32,13 +32,13 @@ def main_play():
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
-    solver_agent = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True)
+    main_solver = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True)
     linear_solver_agent = LinearEquationsSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False)
     cbr_agent_1 = CBRAgent1()
     cbr_agent_2 = CBRAgent2()
 
     # Chosen agent
-    agent = linear_solver_agent
+    agent = main_solver
 
     if profile:
         print("Profiling. Running {} games...".format(num_games_profile))
