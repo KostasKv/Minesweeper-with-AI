@@ -2,9 +2,7 @@ from ortools.sat.python import cp_model
 from copy import deepcopy
 
 class CpSolver():
-    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0, TEST_USE_FIX=False):
-        self.TEST_USE_FIX = TEST_USE_FIX
-        
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0):
         if total_mines_left is not None and num_tiles_outside_sample is not None and frontier_tile_is_inside_sample is not None and num_unknown_tiles_outside is not None and num_unknown_tiles_inside is not None:
             num_frontier = len(frontier_tile_is_inside_sample)
             (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
@@ -36,11 +34,8 @@ class CpSolver():
                 break
         else:
             unknown_inside_var = None
-
         
         potential_definites = [solver.BooleanValue(v) for v in test_vars]
-
-        # unknown_inside_potential_definite = solver.BooleanValue(unknown_inside_var) if unknown_inside_var else None
 
         # Test each frontier variable using an opposite assignment from that in the first solution.
         # If there doesn't exist a feasible solution using the opposite assignment, we know
@@ -73,11 +68,6 @@ class CpSolver():
                     # i is True in one and False in the other; it's not a definite solution.
                     if potential_definites[i] != solution[i]:
                         potential_definites[i] = None
-                
-                # # Update unknown inside var potential definite from solution too, if there is such a variable.
-                # if unknown_inside_var is not None and unknown_inside_potential_definite != solver.BooleanValue(unknown_inside_var):
-                #     unknown_inside_potential_definite = None
-
         
         if unknown_inside_var is not None:
             unknown_inside_var_definite_solution = potential_definites.pop()
@@ -98,34 +88,23 @@ class CpSolver():
         v_inside = []
         v_outside = []
 
-        if self.TEST_USE_FIX:
-            for (i, var) in enumerate(variables):
-                if i < len(frontier_tile_is_inside_sample):
-                    # First bunch of variables are frontier tiles
-                    is_inside_sample = frontier_tile_is_inside_sample[i]
-                else:
-                    # Last bunch are unknown tiles, from which we can use their name to figure out if inside/outside
-                    is_inside_sample = var.Name().startswith('unknown_inside')
+        for (i, var) in enumerate(variables):
+            if i < len(frontier_tile_is_inside_sample):
+                # First bunch of variables are frontier tiles
+                is_inside_sample = frontier_tile_is_inside_sample[i]
+            else:
+                # Last bunch are unknown tiles, from which we can use their name to figure out if inside/outside
+                is_inside_sample = var.Name().startswith('unknown_inside')
 
-                if is_inside_sample:
-                    v_inside.append(variables[i])
-                else:
-                    v_outside.append(variables[i])
-        else:
-            for (i, is_inside_sample) in enumerate(frontier_tile_is_inside_sample):
-                if is_inside_sample:
-                    v_inside.append(variables[i])
-                else:
-                    v_outside.append(variables[i])
-
-
+            if is_inside_sample:
+                v_inside.append(variables[i])
+            else:
+                v_outside.append(variables[i])
 
         # Create total mines constraint
-        # min_mines = total_mines_left - num_tiles_outside_sample + len(v_outside)
         min_mines = total_mines_left - num_tiles_outside_sample
         min_mines = max(0, min_mines)   # Num mines that can be assigned obviously won't be below 0
 
-        # model.Add(min_mines - sum(v_outside) - outside_flagged <= sum(v_inside) <= total_mines_left)
         model.Add(min_mines - sum(v_outside) <= sum(v_inside) <= total_mines_left)
 
         return (model, variables)
@@ -152,9 +131,6 @@ class CpSolver():
             # in total mines constraint, and so the variables must be included in model if using total mines constraint). 
             variables.extend(model.NewBoolVar(f'unknown_outside{i}') for i in range(num_unknown_tiles_outside))
             variables.extend(model.NewBoolVar(f'unknown_inside{i}') for i in range(num_unknown_tiles_inside))
-
-        # # Create the variables
-        # variables = [model.NewBoolVar(str(i)) for i in range(num_frontier)]
 
         # Create adjacent mines constraints
         for row in adjacent_mines_constraints:

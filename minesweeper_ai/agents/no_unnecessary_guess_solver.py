@@ -37,8 +37,6 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sample_stats_this_turn = []
         self.first_click_pos_this_game = None
 
-        self.TEST_DO_THE_FIX_THING = None
-
     def nextMove(self):
         if self.game_state == _Game.State.START:
             move = self.getFirstMove()
@@ -117,22 +115,7 @@ class NoUnnecessaryGuessSolver(Agent):
             
             if sample_hash not in self.samples_considered_already:
                 self.samples_considered_already.add(sample_hash)
-
-                if self.TEST_DO_THE_FIX_THING:
-                    sure_moves = self.getAllSureMovesFromSample_USE_ALL_TILES(sample, sample_pos)
-                else:
-                    sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
-                # sure_moves2 = self.getSureMovesFromSample_LINEAR_EQUATIONS_STRATEGY(sample, sample_pos)
-                # sure_moves2 = self.getAllSureMovesFromSample_USE_ALL_TILES(sample, sample_pos)
-
-                # if x := sure_moves ^ sure_moves2:
-                #     # x = sure_moves
-                #     h = self.sureMovesToHighlights(x)
-                #     self.cheekyGridHighlight(h)
-                #     self.highlightSample(sample)
-                #     y = 5
-                #     self.removeAllSampleHighlights(sample)
-
+                sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
 
                 if sure_moves:
                     return sure_moves
@@ -184,7 +167,6 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def isCoveredTileAFrontierTile(self, tile_x, tile_y):
         '''Assumes input is a non-flagged covered tile '''
-
         adjacent_coords = [((tile_x + i), (tile_y + j)) for i in (-1, 0, 1) for j in (-1, 0, 1)]
 
         for (x, y) in adjacent_coords:
@@ -302,39 +284,6 @@ class NoUnnecessaryGuessSolver(Agent):
         
         new_sure_moves = sps_sure_moves | brute_sure_moves
         return new_sure_moves
-
-    def getAllSureMovesFromSample_USE_ALL_TILES(self, sample, sample_pos):
-        sps_start = time.time()
-        sps_sure_moves = self.singlePointStrategy(sample)
-        sps_end = time.time()
-        sps_duration = sps_end - sps_start
-
-        disjoint_sections = self.getDisjointSections(sample)
-
-        if disjoint_sections:
-            brute_start = time.time()
-            if self.use_num_mines_constraint:
-                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left, sps_sure_moves)
-            else:
-                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves) 
-            brute_end = time.time()
-            brute_duration = brute_end - brute_start
-        else:
-            brute_sure_moves = set()
-            brute_duration = 0
-        
-
-        sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
-        self.sample_stats_this_turn.append(sample_stats)
-
-        # Translate sure-moves coords from sample-relative coords to actual grid coords
-        # and get rid of 'discovered' moves that have already been played 
-        sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
-        brute_sure_moves = self.translate_and_prune_sure_moves(brute_sure_moves, sample_pos, is_brute_moves=True) 
-        
-        new_sure_moves = sps_sure_moves | brute_sure_moves
-        return new_sure_moves
-
 
     def getSureMovesFromSample_LINEAR_EQUATIONS_STRATEGY(self, sample, sample_pos):
         sure_moves = set()
@@ -775,7 +724,7 @@ class NoUnnecessaryGuessSolver(Agent):
         return bruted_sure_moves
 
     def bruteForceUsingConstraintsSolver(self, frontier, adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None):
-        (frontier_definite_solutions, unknown_definite_solution) =  self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, TEST_USE_FIX=self.TEST_DO_THE_FIX_THING)
+        (frontier_definite_solutions, unknown_definite_solution) =  self.cp_solver.searchForDefiniteSolutions(adjacent_mines_constraints, sure_moves_indexes, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample)
 
         sure_moves = set()
 
