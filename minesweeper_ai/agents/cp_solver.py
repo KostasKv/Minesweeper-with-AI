@@ -2,7 +2,9 @@ from ortools.sat.python import cp_model
 from copy import deepcopy
 
 class CpSolver():
-    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0):
+    def searchForDefiniteSolutions(self, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside=None, num_unknown_tiles_inside=None, frontier_tile_is_inside_sample=None, total_mines_left=None, num_tiles_outside_sample=None, outside_flagged=0, TEST_USE_FIX=False):
+        self.TEST_USE_FIX = TEST_USE_FIX
+        
         if total_mines_left is not None and num_tiles_outside_sample is not None and frontier_tile_is_inside_sample is not None and num_unknown_tiles_outside is not None and num_unknown_tiles_inside is not None:
             num_frontier = len(frontier_tile_is_inside_sample)
             (model, variables) = self.getModelWithAllBoardConstraints(num_frontier, adjacent_mines_constraints, sure_moves, num_unknown_tiles_outside, num_unknown_tiles_inside, frontier_tile_is_inside_sample, total_mines_left, num_tiles_outside_sample, outside_flagged)
@@ -95,11 +97,28 @@ class CpSolver():
         # Split variables into those that are inside the sample, and those that are outside it.
         v_inside = []
         v_outside = []
-        for (i, is_inside_sample) in enumerate(frontier_tile_is_inside_sample):
-            if is_inside_sample:
-                v_inside.append(variables[i])
-            else:
-                v_outside.append(variables[i])
+
+        if self.TEST_USE_FIX:
+            for (i, var) in enumerate(variables):
+                if i < len(frontier_tile_is_inside_sample):
+                    # First bunch of variables are frontier tiles
+                    is_inside_sample = frontier_tile_is_inside_sample[i]
+                else:
+                    # Last bunch are unknown tiles, from which we can use their name to figure out if inside/outside
+                    is_inside_sample = var.Name().startswith('unknown_inside')
+
+                if is_inside_sample:
+                    v_inside.append(variables[i])
+                else:
+                    v_outside.append(variables[i])
+        else:
+            for (i, is_inside_sample) in enumerate(frontier_tile_is_inside_sample):
+                if is_inside_sample:
+                    v_inside.append(variables[i])
+                else:
+                    v_outside.append(variables[i])
+
+
 
         # Create total mines constraint
         # min_mines = total_mines_left - num_tiles_outside_sample + len(v_outside)

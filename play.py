@@ -22,12 +22,14 @@ def main_play():
     benchmark = False
     num_games_profile = 100
     num_games_benchmark = 10
-    num_games_other = 10
-    config = {'rows': 16, 'columns': 30, 'num_mines': 40, 'first_click_is_zero': False}
+    num_games_other = 1000
+    config = {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True}
     run_seed = 40   # Same run seed as main experiment
     agent_seed = 4040   # Same agent seed as main experiment
     sample_size = None
     
+    game_seeds = [1950471913765915582, -5084019378995192940, -4207364565853371237]
+
     # Agents selection
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
@@ -74,9 +76,18 @@ def main_play():
         # run(random_legal_agent, config=config, visualise=True, verbose=False, num_games=50, seed=57)
         if human_player:
             agent = None
-        
+    
+        print("playing")
+        agent.TEST_DO_THE_FIX_THING = False
         results = minesweeper.run(agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
+        agent.TEST_DO_THE_FIX_THING = True
+        print("playing 2")
+        results2 = minesweeper.run(agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
         # run(cbr_agent_1, visualise=True, verbose=True, num_games=10)
+        # if results['wins'] != results2['wins']:
+        #     z = 5
+
+
     print("Program stopped.")
 
 def grid_to_binary(grid):
