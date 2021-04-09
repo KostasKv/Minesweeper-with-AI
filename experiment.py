@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, MetaData, insert, select
 from sqlalchemy.sql import and_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.pool import NullPool
 from bitarray import bitarray
 
 from minesweeper_ai import minesweeper
@@ -300,19 +301,18 @@ def store_task_results_in_database(results, task):
     game_config = extract_game_config_from_task(task)
     transaction_attempts_left = 10
     transaction_not_complete = True
-    error = None
+
 
     while transaction_not_complete and transaction_attempts_left > 0:
         try:
             store_results_in_single_transaction(results, game_config, engine, meta_data)
             transaction_not_complete = False
-        except OperationalError as e:
+        except OperationalError:
             # Deadlock detected. Retry transaction 
             transaction_attempts_left -= 1
-            error = e   # Keep track of error incase all attempts fail
     
     if transaction_attempts_left < 0:
-        raise error # All transaction attempts failed. Proceed to panic.
+        raise OperationalError # All transaction attempts failed. Proceed to panic.
 
     engine.dispose()
 
@@ -341,7 +341,12 @@ def get_database_engine_and_reflected_meta_data():
     topsecretword = "password"
     host = "localhost"
 
-    engine = create_engine(f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4', isolation_level='SERIALIZABLE')
+    engine = create_engine(
+        f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4',
+        isolation_level='SERIALIZABLE',
+        poolclass=NullPool
+    )
+
     meta_data = MetaData()
     meta_data.reflect(engine)
 
