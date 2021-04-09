@@ -23,11 +23,11 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    experiment = getExperiment4()
+    experiment = getExperiment2()
     batch_size = 5
     num_processes = psutil.cpu_count(logical=True)  # Use however many logical cores there are on the machine
 
-    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True)
+    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=False)
 
 
 def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True):
@@ -480,8 +480,12 @@ def encode_has_wall(has_wall):
 def complete_task_and_return_results_including_game_info(task_info):
     start = time.time()
 
-    (method, args, kwargs) = task_info[1]                  # unpack
-    results = method(*args, **kwargs)                 # run task
+    # unpack
+    (*_, task) = task_info                
+    (method, args, kwargs) = task
+
+    # run task
+    results = method(*args, **kwargs)                 
 
     end = time.time()
     results['task_time_elapsed'] = end - start
@@ -489,7 +493,7 @@ def complete_task_and_return_results_including_game_info(task_info):
 
 def add_extra_info_to_task_results(results_initial, task_info):
     ''' Extends task's results with extra information. '''
-    (parameters_id, task) = task_info
+    (task_id, parameters_id, task) = task_info
     _, args, kargs = task
     agent = args[0]
 
@@ -499,7 +503,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
         'time_elapsed': results_initial['time_elapsed'],
         'samples_considered': results_initial['samples_considered'],
         'samples_with_solutions': results_initial['samples_with_solutions'],
-        }
+    }
 
     results['difficulty'] = configToDifficultyString(kargs['config'])
     results['sample_size'] = 'x'.join(str(num) for num in agent.SAMPLE_SIZE) # represent sample size (A, B) as string 'AxB'. Bit easier to understand.
@@ -507,6 +511,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
     results['first_click_pos'] = agent.first_click_pos
     results['first_click_is_zero'] = kargs['config']['first_click_is_zero']
     results['parameters_id'] = parameters_id
+    results['task_id'] = task_id
 
     return results
 
@@ -662,7 +667,7 @@ def getExperiment2():
             ],
         },
         'constant': {
-            'num_games': 50000,
+            'num_games': 100000,
             'seed': 2020,
             'verbose': False,
             'visualise': False,  
