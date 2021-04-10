@@ -1,5 +1,5 @@
 from random import Random
-from itertools import chain, combinations
+from itertools import chain, combinations, filterfalse
 from iteration_utilities import deepflatten
 from copy import copy
 import time
@@ -12,9 +12,10 @@ from minesweeper_ai._game import _Game
 
 
 class NoUnnecessaryGuessSolver(Agent):
-    def __init__(self, sample_size=(5,5), use_num_mines_constraint=True, first_click_pos=None, seed=0):
+    def __init__(self, sample_size=(5,5), use_num_mines_constraint=True, can_flag=True, first_click_pos=None, seed=0):
         self.SAMPLE_SIZE = sample_size
         self.use_num_mines_constraint = use_num_mines_constraint
+        self.can_flag = can_flag
         self.first_click_pos = first_click_pos
         self.seed = seed
 
@@ -39,30 +40,29 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def nextMove(self):
         if self.game_state == _Game.State.START:
+            # Start of game, make first move
             move = self.getFirstMove()
             self.first_click_pos_this_game = move[:2]
             self.last_move_was_sure_move = False
         elif self.sure_moves_not_played_yet:
+            # Still have moves in reserve to play
             move = self.sure_moves_not_played_yet.pop()
             self.last_move_was_sure_move = True
         else:
+            # Look for next move based on current board state and measure the decision time
             turn_start_time = time.time()
-            move = self.findNextMove()
+            move = self._get_next_move()
             turn_end_time = time.time()
             
-            # Keep track of turn stats
+            # Keep track of turn's stats
             turn_decision_time = turn_end_time - turn_start_time
             turn_stats = self.get_turn_stats(turn_decision_time)
             self.turn_stats_this_game.append(turn_stats)
-            
+
         return move
 
-    def findNextMove(self):
-        sure_moves = self.lookForSureMovesFromGridSamplesFocussedOnGridSamples(self.SAMPLE_SIZE)
-
-        if not sure_moves:
-            # Try again, this time try every sample that could possibly give sure moves.
-            sure_moves = self.lookForSureMovesFromAllUsefulGridSamples(self.SAMPLE_SIZE)
+    def _get_next_move(self):
+        sure_moves = self._look_for_moves_on_board()
         
         if sure_moves:
             move = sure_moves.pop()
@@ -75,6 +75,18 @@ class NoUnnecessaryGuessSolver(Agent):
             self.num_guesses_for_game += 1
 
         return move
+
+    def _look_for_moves_on_board(self):
+        filter_flag_moves = not self.can_flag
+
+        # First, look at samples on grid that are most likely to have moves (to help reduce decision time)
+        sure_moves = self.lookForSureMovesFromGridSamplesFocussedOnFrontier(self.SAMPLE_SIZE, filter_flag_moves)
+
+        if not sure_moves:
+            # Try again, this time exhaustive search using every sample that could possibly give sure moves.
+            sure_moves = self.lookForSureMovesFromAllUsefulGridSamples(self.SAMPLE_SIZE, filter_flag_moves)
+        
+        return sure_moves
 
     def get_turn_stats(self, turn_decision_time):
         turn_stats_to_store = {
@@ -98,31 +110,43 @@ class NoUnnecessaryGuessSolver(Agent):
         else:
             return (*self.first_click_pos, False)
 
-    # The method distinction between this and the one below helps with performance profiling since
-    # program run time is then split in two between these two, rather than being stuck together under one
-    # method name and so their seperate run times are hard to distinguish.
-    def lookForSureMovesFromGridSamplesFocussedOnGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=True)
+    # The method distinction between this and the one below helps with performance profiling.
+    # Profiling splits these two into seperate spikes if they're in different methods. If this split
+    # is done through passing in a bool to lookForSureMovesFromGridSamples instead, profiler would
+    # show run times for both under the same spike, making it hard to distinguish performance times between the two.
+    def lookForSureMovesFromGridSamplesFocussedOnFrontier(self, sample_size, filter_flag_moves):
+        samples = self.getUsefulSampleAreasFromGrid(sample_size, limit_search_to_frontier=True)
+        return self.lookForSureMovesFromGridSamples(samples, filter_flag_moves)
 
-    def lookForSureMovesFromAllUsefulGridSamples(self, sample_size):
-        return self.lookForSureMovesFromGridSamples(sample_size, limit_search_to_frontier=False)
+    def lookForSureMovesFromAllUsefulGridSamples(self, sample_size, filter_flag_moves):
+        samples = self.getUsefulSampleAreasFromGrid(sample_size, limit_search_to_frontier=False)
+        return self.lookForSureMovesFromGridSamples(samples, filter_flag_moves)
 
-    def lookForSureMovesFromGridSamples(self, size, limit_search_to_frontier=False):
-        samples = self.getUsefulSampleAreasFromGrid(size, limit_search_to_frontier=limit_search_to_frontier)
-
+    def lookForSureMovesFromGridSamples(self, samples, filter_flag_moves):
         for (sample, sample_pos) in samples:
             sample_hash = self.getSampleHash(sample, sample_pos)
-            
-            if sample_hash not in self.samples_considered_already:
-                self.samples_considered_already.add(sample_hash)
-                sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
 
-                if sure_moves:
-                    return sure_moves
+            if sample_hash in self.samples_considered_already:
+                continue
+            
+            self.samples_considered_already.add(sample_hash)
+
+            sure_moves = self.getAllSureMovesFromSample(sample, sample_pos)
+
+            if filter_flag_moves:
+                sure_moves = self.filter_out_flag_moves(sure_moves)
+
+            if sure_moves:
+                return sure_moves
                     
         # No sure moves found
         return set()
-    
+
+    def filter_out_flag_moves(self, moves):
+        # Flag moves should have a True value for last element in a move tuple.
+        # We only keep the ones with False, as they're the non-flag (click on tile) moves.
+        return set(filterfalse(lambda x: x[-1], moves))
+
     def getUsefulSampleAreasFromGrid(self, size, limit_search_to_frontier=False):
         # Note that these sample positions will include the outside grid wall (1 tile thick at most)
         # in the samples. Knowing a sample is beside a wall is useful info and can lead to sure moves.
@@ -242,54 +266,45 @@ class NoUnnecessaryGuessSolver(Agent):
 
     @staticmethod
     def getSampleHash(sample, sample_pos):
+        # Flatten
         tiles = chain.from_iterable(sample)
 
+        # Converting sample to hashable structure:
         # Wall tile      --> None
         # Uncovered tile --> Num adjacent mines
         # Covered tile   --> -1
-        simpler_sample = tuple(None if tile is None else tile.num_adjacent_mines if tile.uncovered else -1 for tile in tiles)
+        simpler_sample = tuple(None if tile is None
+                                else tile.num_adjacent_mines if tile.uncovered
+                                else -1
+                                for tile in tiles)
 
         return hash((simpler_sample, sample_pos))
 
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
         
-        sps_start = time.time()
-        sps_sure_moves = self.singlePointStrategy(sample)
-        sps_end = time.time()
-        sps_duration = sps_end - sps_start
+        # SPS
+        sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
 
+        # Brute force
         disjoint_sections = self.getDisjointSections(sample)
-
-        if disjoint_sections:
-            brute_start = time.time()
-            if self.use_num_mines_constraint:
-                brute_sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left, sps_sure_moves)
-            else:
-                brute_sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves) 
-            brute_end = time.time()
-            brute_duration = brute_end - brute_start
-        else:
-            brute_sure_moves = set()
-            brute_duration = 0
+        mines_left = self.mines_left if self.use_num_mines_constraint else None
+        brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(sample, disjoint_sections, sps_sure_moves, mines_left)
 
 
-        linear_strat_sure_moves = self.linear_equations_gaussian_elimination_strategy(sample, disjoint_sections)
+        # linear_strat_sure_moves = self.linear_equations_gaussian_elimination_strategy(sample, disjoint_sections)
         
-        original_moves_union = sps_sure_moves | brute_sure_moves
-        if sym_diff := linear_strat_sure_moves ^ original_moves_union:
-            left = linear_strat_sure_moves - original_moves_union
-            right = original_moves_union - linear_strat_sure_moves
+        # original_moves_union = sps_sure_moves | brute_sure_moves
+        # if sym_diff := linear_strat_sure_moves ^ original_moves_union:
+        #     left = linear_strat_sure_moves - original_moves_union
+        #     right = original_moves_union - linear_strat_sure_moves
 
-            # DEBUG: highlights n stuff
-            self.highlightSample(sample)
-            hl = self.sureMovesToHighlights(left)
-            hr = self.sureMovesToHighlights(right)
-            self.cheekyHighlight(hr)
-            self.removeAllSampleHighlights(sample)
-
-
-
+        #     # DEBUG: highlights n stuff
+        #     self.highlightSample(sample)
+        #     hl = self.sureMovesToHighlights(left)
+        #     hr = self.sureMovesToHighlights(right)
+        #     self.cheekyHighlight(hr)
+        #     self.removeAllSampleHighlights(sample)
 
         sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
         self.sample_stats_this_turn.append(sample_stats)
@@ -301,8 +316,35 @@ class NoUnnecessaryGuessSolver(Agent):
 
         # new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False) 
         
-        new_sure_moves = sps_sure_moves | brute_sure_moves
-        return new_sure_moves
+        return sps_sure_moves | brute_sure_moves
+    
+    def _single_point_strategy_measure_time(self, sample):
+        start = time.time()
+        sure_moves = self.singlePointStrategy(sample)
+        end = time.time()
+
+        duration = end - start
+
+        return sure_moves, duration
+
+    def _brute_force_strategy_measure_time(self, sample, disjoint_sections, sps_sure_moves, mines_left):
+        sure_moves = set()
+        duration = 0
+
+        if disjoint_sections:
+            start = time.time()
+            
+            # NoneType for mines_left indicates we're not using mine count constraint, just adjacent mines constraints.
+            if mines_left is None:
+                sure_moves = self.bruteForceWithJustAdacentMinesConstraints(sample, disjoint_sections, sps_sure_moves) 
+            else:
+                sure_moves = self.bruteForceWithAllConstraints(sample, disjoint_sections, self.mines_left, sps_sure_moves)
+
+            end = time.time()
+
+            duration = end - start
+            
+        return sure_moves, duration
 
     def linear_equations_gaussian_elimination_strategy(self, sample, disjoint_sections):
         sure_moves = set()

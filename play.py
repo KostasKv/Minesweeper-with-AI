@@ -32,7 +32,7 @@ def main_play():
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
-    main_solver = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True)
+    main_solver = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True, can_flag=False)
     linear_solver_agent = LinearEquationsSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False)
     cbr_agent_1 = CBRAgent1()
     cbr_agent_2 = CBRAgent2()
