@@ -25,6 +25,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.sure_moves_not_played_yet = set()
         self.cp_solver = CpSolver()
         self.renderer = None
+        self.known_mines = None
 
         self.sample_count = 0
         self.samples_with_solution_count = 0
@@ -63,7 +64,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def _get_next_move(self):
         sure_moves = self._look_for_moves_on_board()
-        
+
         if sure_moves:
             move = sure_moves.pop()
             self.sure_moves_not_played_yet.update(sure_moves)
@@ -124,7 +125,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def lookForSureMovesFromGridSamples(self, samples, filter_flag_moves):
         for (sample, sample_pos) in samples:
-            sample_hash = self.getSampleHash(sample, sample_pos)
+            sample_hash = self.hash_sample_and_pos(sample, sample_pos)
 
             if sample_hash in self.samples_considered_already:
                 continue
@@ -143,9 +144,17 @@ class NoUnnecessaryGuessSolver(Agent):
         return set()
 
     def filter_out_flag_moves(self, moves):
-        # Flag moves should have a True value for last element in a move tuple.
-        # We only keep the ones with False, as they're the non-flag (click on tile) moves.
-        return set(filterfalse(lambda x: x[-1], moves))
+        click_moves = set()
+
+        for (x, y, flag_tile) in moves:
+            if flag_tile:
+                # When making a guess move, we still want to be able to filter out the known
+                # mine tiles, even if solver is not explicitly flagging them.
+                self.known_mines.add((x, y))
+            else:
+                click_moves.add((x, y, flag_tile))
+
+        return click_moves
 
     def getUsefulSampleAreasFromGrid(self, size, limit_search_to_frontier=False):
         # Note that these sample positions will include the outside grid wall (1 tile thick at most)
@@ -263,22 +272,27 @@ class NoUnnecessaryGuessSolver(Agent):
         sample.extend(sample_end)
 
         return sample
-
-    @staticmethod
-    def getSampleHash(sample, sample_pos):
+    
+    def hash_sample_and_pos(self, sample, sample_pos):
+        sample_hash = self.hash_sample(sample, ignore_flags=False)
+        return hash((sample_hash, sample_pos))
+    
+    def hash_sample(self, sample, ignore_flags):
         # Flatten
         tiles = chain.from_iterable(sample)
 
         # Converting sample to hashable structure:
         # Wall tile      --> None
         # Uncovered tile --> Num adjacent mines
+        # Flagged tile   --> -2 (if ignore_flags is True, otherwise -1)
         # Covered tile   --> -1
         simpler_sample = tuple(None if tile is None
-                                else tile.num_adjacent_mines if tile.uncovered
-                                else -1
-                                for tile in tiles)
-
-        return hash((simpler_sample, sample_pos))
+                               else tile.num_adjacent_mines if tile.uncovered
+                               else -2 if not ignore_flags and tile.is_flagged
+                               else -1
+                               for tile in tiles)
+        
+        return hash(simpler_sample)
 
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
@@ -526,7 +540,9 @@ class NoUnnecessaryGuessSolver(Agent):
             'brute_seconds_elapsed': brute_duration,
             'disjoint_sections_sizes': self.get_disjoint_section_sizes(disjoint_sections),
             'tiles_already_uncovered_in_sample': self.count_num_uncovered_tiles(sample),
-            'has_wall': has_wall
+            'has_wall': has_wall,
+            'hash_ignore_flags': self.hash_sample(sample, ignore_flags=True),
+            'hash_with_flags': self.hash_sample(sample, ignore_flags=False),
         }
 
         return sample_stats
@@ -992,7 +1008,7 @@ class NoUnnecessaryGuessSolver(Agent):
         x = self.random.randint(0, len(self.grid[0]) - 1)
         y = self.random.randint(0, len(self.grid) - 1)
 
-        while self.isIllegalClick(x, y):
+        while self.isIllegalClick(x, y) or (x, y) in self.known_mines:
             x = self.random.randint(0, len(self.grid[0]) - 1)
             y = self.random.randint(0, len(self.grid) - 1)
 
@@ -1062,6 +1078,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.random = self.seed_random_engine_based_on_game_seed(game_seed)
         self.sure_moves_not_played_yet = set()
         self.samples_considered_already = set()
+        self.known_mines = set()
 
         # Resetting stats stuff
         self.num_guesses_for_game = 0
@@ -1243,4 +1260,3 @@ class SampleTile():
             self.num_adjacent_mines = tile.num_adjacent_mines
         else:
             self.is_flagged = tile.is_flagged
-
