@@ -272,7 +272,24 @@ class NoUnnecessaryGuessSolver(Agent):
         else:
             brute_sure_moves = set()
             brute_duration = 0
+
+
+        linear_strat_sure_moves = self.linear_equations_gaussian_elimination_strategy(sample, disjoint_sections)
         
+        original_moves_union = sps_sure_moves | brute_sure_moves
+        if sym_diff := linear_strat_sure_moves ^ original_moves_union:
+            left = linear_strat_sure_moves - original_moves_union
+            right = original_moves_union - linear_strat_sure_moves
+
+            # DEBUG: highlights n stuff
+            self.highlightSample(sample)
+            hl = self.sureMovesToHighlights(left)
+            hr = self.sureMovesToHighlights(right)
+            self.cheekyHighlight(hr)
+            self.removeAllSampleHighlights(sample)
+
+
+
 
         sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
         self.sample_stats_this_turn.append(sample_stats)
@@ -281,14 +298,15 @@ class NoUnnecessaryGuessSolver(Agent):
         # and get rid of 'discovered' moves that have already been played 
         sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
         brute_sure_moves = self.translate_and_prune_sure_moves(brute_sure_moves, sample_pos, is_brute_moves=True) 
+
+        # new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False) 
         
         new_sure_moves = sps_sure_moves | brute_sure_moves
         return new_sure_moves
 
-    def getSureMovesFromSample_LINEAR_EQUATIONS_STRATEGY(self, sample, sample_pos):
+    def linear_equations_gaussian_elimination_strategy(self, sample, disjoint_sections):
         sure_moves = set()
-        disjoint_sections = self.getDisjointSections(sample)
-        
+
         for (frontier, fringe) in disjoint_sections:
             # Convert to a list so that tiles are ordered. That way we can reference
             # which matrix column refers to which tile (i'th column in matrix represents
@@ -303,11 +321,32 @@ class NoUnnecessaryGuessSolver(Agent):
             # resorting to bruteforcing all possible mine configurations)
             sure_moves |= self.matrix_search_solutions(matrix, frontier)
 
-        # Translate sure-moves coords from sample-relative coords to actual grid coords
-        # and get rid of 'discovered' moves that have already been played 
-        new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False) 
+        return sure_moves
 
-        return new_sure_moves
+    def gaussian_elimination(self, m):
+        #eliminate columns
+        for col in range(len(m[0])):
+            for row in range(col+1, len(m)):
+                r = [(rowValue * (-(m[row][col] / m[col][col]))) for rowValue in m[col]]
+                m[row] = [sum(pair) for pair in zip(m[row], r)]
+
+        #now backsolve by substitution
+        ans = []
+        m.reverse() #makes it easier to backsolve
+        for sol in range(len(m)):
+                if sol == 0:
+                    ans.append(m[sol][-1] / m[sol][-2])
+                else:
+                    inner = 0
+                    #substitute in all known coefficients
+                    for x in range(sol):
+                        inner += (ans[x]*m[sol][-2-x])
+                    #the equation is now reduced to ax + b = c form
+                    #solve with (c - b) / a
+                    ans.append((m[sol][-1]-inner)/m[sol][-sol-2])
+        ans.reverse()
+        return ans
+    
 
     @staticmethod
     def createConstraintMatrixOfSample(frontier, fringe, mines_left):
@@ -323,8 +362,7 @@ class NoUnnecessaryGuessSolver(Agent):
                 # on the fringe tile's adjacent mine constraint. Include it in the equation
                 # by giving it a coefficient of 1, otherwise exclude it with a
                 # coefficient of 0.
-                if abs(frontier_x -
-                       fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1:
+                if abs(frontier_x - fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1:
                     matrix_row.append(1)
                 else:
                     matrix_row.append(0)
@@ -342,6 +380,7 @@ class NoUnnecessaryGuessSolver(Agent):
         tiles_removed = []
 
         while not finished_searching:
+            matrix = matrix.rref(pivots=False)   # Row-reduced echelon form
             solutions = self.minMaxBoundarySolutionSearch(matrix)
 
             if solutions:
