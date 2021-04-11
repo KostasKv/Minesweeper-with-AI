@@ -88,7 +88,7 @@ class NoUnnecessaryGuessSolver(Agent):
             sure_moves = self.lookForSureMovesFromAllUsefulGridSamples(self.SAMPLE_SIZE, filter_flag_moves)
         
         return sure_moves
-
+    
     def get_turn_stats(self, turn_decision_time):
         turn_stats_to_store = {
             'turn_number': len(self.turn_stats_this_game) + 1,
@@ -274,21 +274,21 @@ class NoUnnecessaryGuessSolver(Agent):
         return sample
     
     def hash_sample_and_pos(self, sample, sample_pos):
-        sample_hash = self.hash_sample(sample, ignore_flags=False)
+        sample_hash = self.hash_sample(sample)
         return hash((sample_hash, sample_pos))
     
-    def hash_sample(self, sample, ignore_flags):
+    def hash_sample(self, sample):
         # Flatten
         tiles = chain.from_iterable(sample)
 
         # Converting sample to hashable structure:
         # Wall tile      --> None
         # Uncovered tile --> Num adjacent mines
-        # Flagged tile   --> -2 (if ignore_flags is True, otherwise -1)
+        # Flagged tile   --> -2
         # Covered tile   --> -1
         simpler_sample = tuple(None if tile is None
                                else tile.num_adjacent_mines if tile.uncovered
-                               else -2 if not ignore_flags and tile.is_flagged
+                               else -2 if tile.is_flagged
                                else -1
                                for tile in tiles)
         
@@ -541,8 +541,6 @@ class NoUnnecessaryGuessSolver(Agent):
             'disjoint_sections_sizes': self.get_disjoint_section_sizes(disjoint_sections),
             'tiles_already_uncovered_in_sample': self.count_num_uncovered_tiles(sample),
             'has_wall': has_wall,
-            'hash_ignore_flags': self.hash_sample(sample, ignore_flags=True),
-            'hash_with_flags': self.hash_sample(sample, ignore_flags=False),
         }
 
         return sample_stats
