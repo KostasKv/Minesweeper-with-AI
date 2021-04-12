@@ -297,16 +297,16 @@ class NoUnnecessaryGuessSolver(Agent):
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
         
-        # SPS
-        sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
+        # # SPS
+        # sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
 
-        # Brute force
+        # # Brute force
         disjoint_sections = self.getDisjointSections(sample)
-        mines_left = self.mines_left if self.use_num_mines_constraint else None
-        brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(sample, disjoint_sections, sps_sure_moves, mines_left)
+        # mines_left = self.mines_left if self.use_num_mines_constraint else None
+        # brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(sample, disjoint_sections, sps_sure_moves, mines_left)
 
 
-        # linear_strat_sure_moves = self.linear_equations_gaussian_elimination_strategy(sample, disjoint_sections)
+        deduction_moves = self.deductive_strategy(sample, disjoint_sections)
         
         # original_moves_union = sps_sure_moves | brute_sure_moves
         # if sym_diff := linear_strat_sure_moves ^ original_moves_union:
@@ -320,18 +320,138 @@ class NoUnnecessaryGuessSolver(Agent):
         #     self.cheekyHighlight(hr)
         #     self.removeAllSampleHighlights(sample)
 
-        sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
-        self.sample_stats_this_turn.append(sample_stats)
+        # sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
+        # self.sample_stats_this_turn.append(sample_stats)
 
-        # Translate sure-moves coords from sample-relative coords to actual grid coords
-        # and get rid of 'discovered' moves that have already been played 
-        sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
-        brute_sure_moves = self.translate_and_prune_sure_moves(brute_sure_moves, sample_pos, is_brute_moves=True) 
+        # # Translate sure-moves coords from sample-relative coords to actual grid coords
+        # # and get rid of 'discovered' moves that have already been played 
+        # sps_sure_moves = self.translate_and_prune_sure_moves(sps_sure_moves, sample_pos, is_brute_moves=False)        
+        # brute_sure_moves = self.translate_and_prune_sure_moves(brute_sure_moves, sample_pos, is_brute_moves=True) 
 
-        # new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False) 
-        
-        return sps_sure_moves | brute_sure_moves
+        # # new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False) 
+        new_sure_moves = self.translate_and_prune_sure_moves(deduction_moves, sample_pos, is_brute_moves=False)
+        # return sps_sure_moves | brute_sure_moves
+        return new_sure_moves
     
+    def deductive_strategy(self, sample, disjoint_sections):
+        sure_moves = set()
+
+        for (frontier, fringe) in disjoint_sections:
+            frontier = list(frontier)   # Order the frontier tiles
+            matrix = self.createAdjacentMinesConstraintMatrixOfSample(frontier, fringe)
+            # col_moves = self.deduce_moves_from_constraint_matrix([[1,1,0,1],[1,1,1,1]])
+            col_moves = self.deduce_moves_from_constraint_matrix(matrix)
+
+            # Convert frontier results into sure moves.
+            for (index, is_mine) in col_moves:
+                coords = frontier[index]
+                sure_moves.add((*coords, is_mine,))
+
+            h = self.sureMovesToHighlights(sure_moves)
+            self.cheekyHighlight(h)
+            x = 6
+
+        self.removeAllSampleHighlights(sample)
+        return sure_moves
+    
+    def deduce_moves_from_constraint_matrix(self, matrix):
+        comparisons_left = True
+        
+        start = time.time()
+
+        constraints_not_checked = list(matrix)
+
+        # Create all subset-diff constraints
+        while comparisons_left:
+            new_constraints = []
+            comparisons_left = False
+
+            for constraint in constraints_not_checked:
+                for other_constraint in matrix:
+                    if constraint == other_constraint:
+                        continue
+
+                    if new_constraint := self.getStrictSubsetConstraint(constraint, other_constraint):
+                        if new_constraint not in matrix and new_constraint not in new_constraints:
+                            new_constraints.append(new_constraint)
+                            comparisons_left = True  
+            
+            matrix.extend(new_constraints)
+            constraints_not_checked = list(new_constraints)
+
+        end = time.time()
+        print(f"creating constraints: {start - end}")
+        moves = set()
+
+        exhausted_moves_search = False
+        start2 = time.time()
+        while not exhausted_moves_search:
+            exhausted_moves_search = True
+            
+            # Extract all solutions
+            for constraint in matrix:
+                variables, target_sum = constraint[:-1], constraint[-1]
+                number_of_variables_in_constraint = sum(variables)
+
+                is_mine = None
+
+                if target_sum == number_of_variables_in_constraint:
+                    is_mine = True
+                elif target_sum == 0:
+                    is_mine = False
+                
+                if is_mine is not None:
+                    for (i, is_var_included) in enumerate(variables):
+                        if is_var_included and (i, is_mine) not in moves:
+                            moves.add((i, is_mine))
+                            exhausted_moves_search = False
+
+                            # Update constraint matrix based on solution
+                            for j in range(len(matrix)):
+                                row = matrix[j]
+
+                                if row[i]:
+                                    row[i] = 0
+                                    if is_mine:
+                                        row[-1] -= 1
+
+        end2 = time.time()
+        print(f"Finding solutions: {end2- start2}\tfactor: {round((end-start)/(end2-start2), 2)}\n")
+
+        return moves
+
+    def getStrictSubsetConstraint(self, constraint1, constraint2):
+        vars1, target1 = constraint1[:-1], constraint1[-1]
+        vars2, target2 = constraint2[:-1], constraint2[-1]
+
+        constraint1_is_superset = False
+        constraint2_is_superset = False
+        subset_diff = []
+
+        # Get all variables in the superset that aren't in the subset
+        for var1, var2 in zip(vars1, vars2):
+            if (not var1 and not var2) or (var1 and var2):
+                subset_diff.append(0)
+            elif var1 and not var2:
+                subset_diff.append(1)
+                constraint1_is_superset = True
+            elif not var1 and var2:
+                subset_diff.append(1)
+                constraint2_is_superset = True
+            
+            if constraint1_is_superset and constraint2_is_superset:
+                # Contradiction, sets are incomparable
+                return None
+        
+        if not subset_diff:
+            # Sets are equal, thus not strict subset
+            return None
+        
+        # Create new constraint
+        target_diff = abs(target1 - target2)
+
+        return subset_diff + [target_diff]
+
     def _single_point_strategy_measure_time(self, sample):
         start = time.time()
         sure_moves = self.singlePointStrategy(sample)
@@ -359,170 +479,6 @@ class NoUnnecessaryGuessSolver(Agent):
             duration = end - start
             
         return sure_moves, duration
-
-    def linear_equations_gaussian_elimination_strategy(self, sample, disjoint_sections):
-        sure_moves = set()
-
-        for (frontier, fringe) in disjoint_sections:
-            # Convert to a list so that tiles are ordered. That way we can reference
-            # which matrix column refers to which tile (i'th column in matrix represents
-            # i'th tile in list). Specifically placing bruteable tiles last
-            # so they end up being the rightmost columns in the matrix.
-            frontier = list(frontier)
-
-            matrix = self.createConstraintMatrixOfSample(frontier, fringe, self.mines_left)
-            matrix = matrix.rref(pivots=False)   # Row-reduced echelon form
-
-            # Look for solutions that can be extracted quickly from the matrix (without
-            # resorting to bruteforcing all possible mine configurations)
-            sure_moves |= self.matrix_search_solutions(matrix, frontier)
-
-        return sure_moves
-
-    def gaussian_elimination(self, m):
-        #eliminate columns
-        for col in range(len(m[0])):
-            for row in range(col+1, len(m)):
-                r = [(rowValue * (-(m[row][col] / m[col][col]))) for rowValue in m[col]]
-                m[row] = [sum(pair) for pair in zip(m[row], r)]
-
-        #now backsolve by substitution
-        ans = []
-        m.reverse() #makes it easier to backsolve
-        for sol in range(len(m)):
-                if sol == 0:
-                    ans.append(m[sol][-1] / m[sol][-2])
-                else:
-                    inner = 0
-                    #substitute in all known coefficients
-                    for x in range(sol):
-                        inner += (ans[x]*m[sol][-2-x])
-                    #the equation is now reduced to ax + b = c form
-                    #solve with (c - b) / a
-                    ans.append((m[sol][-1]-inner)/m[sol][-sol-2])
-        ans.reverse()
-        return ans
-    
-
-    @staticmethod
-    def createConstraintMatrixOfSample(frontier, fringe, mines_left):
-        matrix = []
-
-        # Build up matrix of row equations.
-        for (fringe_x, fringe_y, num_unflagged_adjacent_mines_around_tile) in fringe:
-            matrix_row = []
-
-            # Build equation's left-hand-side of variables
-            for (frontier_x, frontier_y) in frontier:
-                # If frontier tile is adjacent to fringe tile, then it has an effect
-                # on the fringe tile's adjacent mine constraint. Include it in the equation
-                # by giving it a coefficient of 1, otherwise exclude it with a
-                # coefficient of 0.
-                if abs(frontier_x - fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1:
-                    matrix_row.append(1)
-                else:
-                    matrix_row.append(0)
-
-            # Append equation's right-hand-side answer/constraint
-            matrix_row.append(num_unflagged_adjacent_mines_around_tile)
-
-            matrix.append(matrix_row)
-
-        return Matrix(matrix)
-
-    def matrix_search_solutions(self, matrix, frontier):
-        sure_moves = set()
-        finished_searching = False
-        tiles_removed = []
-
-        while not finished_searching:
-            matrix = matrix.rref(pivots=False)   # Row-reduced echelon form
-            solutions = self.minMaxBoundarySolutionSearch(matrix)
-
-            if solutions:
-                for (frontier_index, is_mine) in solutions:
-                    (x, y) = frontier[frontier_index]
-                    sure_moves.add((x, y, is_mine))
-
-                # pprint(matrix)
-                (matrix, cols_deleted) = self.updateMatrixWithSolutions(matrix, solutions)
-                
-                # for i in cols_deleted:
-                #     removed = frontier.pop(i)
-                #     tiles_removed.append(removed)
-
-                # Delete (and record) frontier tiles from list that
-                # represented the columns that were deleted from the matrix
-                for i in range(len(frontier) - 1, -1, -1):
-                    if i in cols_deleted:
-                        tiles_removed.append(frontier[i])
-                        del frontier[i]
-
-                # print("\nremoved {} to get:\n".format(cols_deleted))
-                # pprint(matrix)
-                # print("\n\n")
-            else:
-                finished_searching = True
-        
-        # if matrix.rows > 1:
-        #     pprint(matrix)
-        #     print()
-
-        return sure_moves
-
-    @staticmethod
-    def minMaxBoundarySolutionSearch(matrix):
-        solutions = set()
-
-        for i in range(matrix.rows):
-            negatives = []
-            positives = []
-            min_bound = 0
-            max_bound = 0
-
-            for j in range(matrix.cols - 1):
-                if matrix[i, j] < 0:
-                    negatives.append(j)
-                    min_bound += matrix[i, j]
-                elif matrix[i, j] > 0:
-                    positives.append(j,)
-                    max_bound += matrix[i, j]
-
-            min_bound_solution_exists = (matrix[i, -1] == min_bound)
-            max_bound_solution_exists = (matrix[i, -1] == max_bound)
-
-            if min_bound_solution_exists or max_bound_solution_exists:
-                for j in negatives:
-                    solutions.add((j, min_bound_solution_exists))
-                for j in positives:
-                    solutions.add((j, max_bound_solution_exists))
-
-        return solutions
-
-    @staticmethod
-    def updateMatrixWithSolutions(matrix, solutions):
-        for (column, is_mine) in solutions:
-            for i in range(matrix.rows):
-                if is_mine and matrix[i, column] != 0:
-                    matrix[i, matrix.cols - 1] -= matrix[i, column]
-
-                matrix[i, column] = 0
-
-        # Get rid of rows and columns with just zero entries
-        rows, cols = matrix.shape
-        nonzero_rows = [i for i in range(rows) if any(matrix[i, j] != 0 for j in range(cols))]
-
-        nonzero_cols = []
-        cols_deleted = []
-        for j in range(cols - 1):
-            if all(matrix[i, j] == 0 for i in range(rows)):
-                cols_deleted.append(j)
-            else:
-                nonzero_cols.append(j)
-        
-        matrix = matrix[nonzero_rows, nonzero_cols + [cols - 1]]
-        
-        return (matrix, cols_deleted)
 
     def get_sample_stats(self, sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections):
         (sps_mine_solutions, sps_no_mine_solutions) = self.count_up_mine_and_no_mine_solutions(sps_sure_moves)
