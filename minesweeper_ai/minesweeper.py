@@ -99,6 +99,7 @@ def update_stats_from_action_result(stats, result, renderer, executor):
                 'num_guesses': renderer.agent.num_guesses_for_game,
                 'first_click_pos_x': renderer.agent.first_click_pos_this_game[0],
                 'first_click_pos_y': renderer.agent.first_click_pos_this_game[1],
+                'can_flag': renderer.agent.can_flag,
                 'turns': renderer.agent.get_game_turns_stats(),
             }
 

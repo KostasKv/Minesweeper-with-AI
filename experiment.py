@@ -23,11 +23,11 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    experiment = getExperiment2()
+    experiment = getExperiment4()
     batch_size = 5
     num_processes = psutil.cpu_count(logical=True)  # Use however many logical cores there are on the machine
 
-    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=False)
+    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True)
 
 
 def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True):
@@ -336,7 +336,7 @@ def get_database_engine_and_reflected_meta_data():
     user = "cokk"
     # topsecretword = "8iCyrvxoK4RMitkZ" 
     # host = "lnx-cokk-1.lunet.lboro.ac.uk"
-    db_name = "cokk"
+    db_name = "run2"
 
     topsecretword = "password"
     host = "localhost"
@@ -749,6 +749,7 @@ def getExperiment4():
         'variable': {
             'sample_size': [(4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), None],  # Sample size None means use full grid
             'use_num_mines_constraint': [True, False],
+            'can_flag': [True, False]
         },
         'constant': {
             'seed': 4040,
@@ -771,7 +772,7 @@ def getExperiment4():
         },
         'constant': {
             # 'num_games': 100000,
-            'num_games': 1000,
+            'num_games': 2,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
