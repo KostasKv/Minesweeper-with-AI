@@ -1680,6 +1680,3 @@ class SampleTile:
             self.num_adjacent_mines = tile.num_adjacent_mines
         else:
             self.is_flagged = tile.is_flagged
-
-
-dicts = {"appele", "pee", "apl"}

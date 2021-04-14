@@ -12,8 +12,10 @@ from minesweeper_ai.agents.cbr_agent1 import CBRAgent1
 from minesweeper_ai.agents.cbr_agent2 import CBRAgent2
 from bitarray import bitarray
 
+
 def main():
     main_play()
+
 
 def main_play():
     game_seeds = None
@@ -23,17 +25,24 @@ def main_play():
     num_games_profile = 100
     num_games_benchmark = 10
     num_games_other = 10
-    config = {'rows': 16, 'columns': 16, 'num_mines': 40, 'first_click_is_zero': True}
-    run_seed = 40   # Same run seed as main experiment
-    agent_seed = 4040   # Same agent seed as main experiment
+    config = {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
+    run_seed = 40  # Same run seed as main experiment
+    agent_seed = 4040  # Same agent seed as main experiment
     sample_size = None
 
     # Agents selection
     random_agent = RandomAgent()
     random_legal_agent = RandomLegalMovesAgent()
     pick_first_uncovered_agent = PickFirstUncoveredAgent()
-    main_solver = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True, can_flag=False)
-    linear_solver_agent = LinearEquationsSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False)
+    main_solver = NoUnnecessaryGuessSolver(
+        seed=agent_seed,
+        sample_size=sample_size,
+        use_num_mines_constraint=True,
+        can_flag=False,
+    )
+    linear_solver_agent = LinearEquationsSolver(
+        seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False
+    )
     cbr_agent_1 = CBRAgent1()
     cbr_agent_2 = CBRAgent2()
 
@@ -42,8 +51,14 @@ def main_play():
 
     if profile:
         print("Profiling. Running {} games...".format(num_games_profile))
-        cProfile.run("minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)", "solver1.prof")
-        cProfile.run("minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)", "solver2.prof")
+        cProfile.run(
+            "minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)",
+            "solver1.prof",
+        )
+        cProfile.run(
+            "minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)",
+            "solver2.prof",
+        )
     if benchmark:
         # sample_sizes = [(32, 18)]
         # u = [True]
@@ -51,30 +66,61 @@ def main_play():
         # u = [True, False]
         # configs = [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}]
         sample_sizes = [(18, 18)]
-        configs = [{'rows': 16, 'columns': 16, 'num_mines': 40}]
+        configs = [{"rows": 16, "columns": 16, "num_mines": 40}]
         u = [True]
         combinations = len(sample_sizes) * len(u) * len(configs)
-        print("Benchmarking. Running {} games total, spread over {} different configurations...".format(num_games_benchmark * combinations, combinations))
-        
+        print(
+            "Benchmarking. Running {} games total, spread over {} different configurations...".format(
+                num_games_benchmark * combinations, combinations
+            )
+        )
+
         results = []
 
         for sample_size in sample_sizes:
             for use_num_mines_constraint in u:
                 for config in configs:
-                    print("Sample size: {}\tuse_num_mines_constraint: {}, config: {}".format(sample_size, use_num_mines_constraint, config))
-                    solver_agent = NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=use_num_mines_constraint)
+                    print(
+                        "Sample size: {}\tuse_num_mines_constraint: {}, config: {}".format(
+                            sample_size, use_num_mines_constraint, config
+                        )
+                    )
+                    solver_agent = NoUnnecessaryGuessSolver(
+                        seed=agent_seed,
+                        sample_size=sample_size,
+                        use_num_mines_constraint=use_num_mines_constraint,
+                    )
                     start = time.time()
-                    result = minesweeper.run(agent, config=config, visualise=False, verbose=False, num_games=num_games_benchmark, seed=run_seed)
+                    result = minesweeper.run(
+                        agent,
+                        config=config,
+                        visualise=False,
+                        verbose=False,
+                        num_games=num_games_benchmark,
+                        seed=run_seed,
+                    )
                     end = time.time()
                     results.append(result)
                     print("Time taken: {}s\n".format(end - start))
     if not benchmark and not profile:
         if human_player:
             agent = None
-    
-        results = minesweeper.run(agent, config=config, visualise=True, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
 
+        # agent.can_flag = True
+        results = minesweeper.run(
+            agent,
+            config=config,
+            visualise=True,
+            verbose=False,
+            num_games=num_games_other,
+            seed=run_seed,
+            game_seeds=game_seeds,
+        )
+        # agent.can_flag = False
+        # results2 = minesweeper.run(agent, config=config, visualise=False, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
+        # print(results['wins'], results2['wins'])
     print("Program stopped.")
+
 
 def grid_to_binary(grid):
     binary_grid = bitarray()
@@ -89,6 +135,5 @@ def grid_to_binary(grid):
     return binary_grid.tobytes()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-    

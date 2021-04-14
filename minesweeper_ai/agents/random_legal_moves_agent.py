@@ -2,6 +2,7 @@ from random import randint
 
 from .agent import Agent
 
+
 class RandomLegalMovesAgent(Agent):
     def nextMove(self):
         # print("grid is ({}, {})".format(len(self.grid)))
@@ -13,7 +14,6 @@ class RandomLegalMovesAgent(Agent):
             y = randint(0, len(self.grid) - 1)
 
         return (x, y, False)
-
 
     def isIllegalMove(self, x, y, toggle_flag):
         toggle_flag = False
