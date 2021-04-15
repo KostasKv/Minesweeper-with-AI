@@ -311,24 +311,23 @@ class NoUnnecessaryGuessSolver(Agent):
         return hash((sample_hash, sample_pos))
 
     def hash_sample(self, sample):
-        # Flatten
-        tiles = chain.from_iterable(sample)
+        simpler_sample = []
 
-        # Converting sample to hashable structure:
-        # Wall tile      --> None
-        # Uncovered tile --> Num adjacent mines
-        # Flagged tile   --> -2
-        # Covered tile   --> -1
-        simpler_sample = tuple(
-            None
-            if tile is None
-            else tile.num_adjacent_mines
-            if tile.uncovered
-            else -2
-            if tile.is_flagged
-            else -1
-            for tile in tiles
-        )
+        for row in sample:
+            for tile in row:
+                if tile is None:
+                    value = None
+                elif tile.uncovered:
+                    value = tile.num_adjacent_mines
+                elif tile.is_flagged:
+                    value = -2
+                else:
+                    value = -1
+
+                simpler_sample.append(value)
+
+        # Convert to tuple so it's hashable
+        simpler_sample = tuple(simpler_sample)
 
         return hash(simpler_sample)
 
