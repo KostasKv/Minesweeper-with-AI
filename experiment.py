@@ -199,9 +199,12 @@ def createTasksFromParameters(agent_parameters, other_parameters, batch_size):
     return tasks
 
 def filter_finished_tasks(tasks_info, finished_task_ids):
+    # Allow for O(1) lookups on average to speed up the process
+    finished_task_ids = set(finished_task_ids)
+
     return list(itertools.filterfalse(lambda x: x[0] in finished_task_ids, tasks_info))
 
-def fetch_finished_task_ids():
+def fetch_finished_task_ids():  
     (engine, meta_data) = get_database_engine_and_reflected_meta_data()
 
     table_finished_task = meta_data.tables['finished_task']
@@ -334,12 +337,12 @@ def store_results_in_single_transaction(results, game_config, engine, meta_data)
 def get_database_engine_and_reflected_meta_data():
     # bank account details
     user = "cokk"
-    # topsecretword = "8iCyrvxoK4RMitkZ" 
-    # host = "lnx-cokk-1.lunet.lboro.ac.uk"
+    topsecretword = "8iCyrvxoK4RMitkZ" 
+    host = "lnx-cokk-1.lunet.lboro.ac.uk"
     db_name = "run2"
 
-    topsecretword = "password"
-    host = "localhost"
+    # topsecretword = "password"
+    # host = "localhost"
 
     engine = create_engine(
         f'mysql://{user}:{topsecretword}@{host}/{db_name}?charset=utf8mb4',
@@ -771,8 +774,7 @@ def getExperiment4():
             ],
         },
         'constant': {
-            # 'num_games': 100000,
-            'num_games': 2,
+            'num_games': 25000,
             'seed': 40,
             'verbose': False,
             'visualise': False,  
