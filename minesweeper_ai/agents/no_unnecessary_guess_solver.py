@@ -308,6 +308,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
     def hash_sample_and_pos(self, sample, sample_pos):
         sample_hash = self.hash_sample(sample)
+        sample_hash2 = self.hash_sample_TEST(sample)
         return hash((sample_hash, sample_pos))
 
     def hash_sample(self, sample):
@@ -329,6 +330,27 @@ class NoUnnecessaryGuessSolver(Agent):
             else -1
             for tile in tiles
         )
+
+        return hash(simpler_sample)
+
+    def hash_sample_TEST(self, sample):
+        simpler_sample = []
+
+        for row in sample:
+            for tile in row:
+                if tile is None:
+                    value = None
+                elif tile.uncovered:
+                    value = tile.num_adjacent_mines
+                elif tile.is_flagged:
+                    value = -2
+                else:
+                    value = -1
+
+                simpler_sample.append(value)
+
+        # Convert to tuple so it's hashable
+        simpler_sample = tuple(simpler_sample)
 
         return hash(simpler_sample)
 
