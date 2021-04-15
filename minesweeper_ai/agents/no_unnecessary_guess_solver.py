@@ -3,6 +3,7 @@ from itertools import chain, combinations, filterfalse
 from iteration_utilities import deepflatten
 from copy import copy
 import time
+from collections import deque
 
 from sympy import Matrix
 
@@ -342,8 +343,8 @@ class NoUnnecessaryGuessSolver(Agent):
         # mines_left = self.mines_left if self.use_num_mines_constraint else None
         # brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(sample, disjoint_sections, sps_sure_moves, mines_left)
 
-        deduction_moves = self.deductive_strategy(sample, disjoint_sections)
-
+        deduction_moves = self.naive_deduction_strategy(disjoint_sections)
+        self.removeAllSampleHighlights(sample)
         # original_moves_union = sps_sure_moves | brute_sure_moves
         # if sym_diff := linear_strat_sure_moves ^ original_moves_union:
         #     left = linear_strat_sure_moves - original_moves_union
@@ -398,274 +399,300 @@ class NoUnnecessaryGuessSolver(Agent):
         self.removeAllSampleHighlights(sample)
         return sure_moves
 
-    @staticmethod
-    def build_constraints(frontier, fringe):
-        constraints = dict()
-        common_constraints = dict()
+    def build_constraints(self, frontier, fringe):
+        constraints = []
+        var_to_constraints = dict()
 
-        # Build up constraints
-        for (fringe_x, fringe_y, num_unknown_adjacent_mines) in fringe:
+        for (constraint_index, tile_info) in enumerate(fringe):
+
+            (fringe_x, fringe_y, num_unknown_adjacent_mines) = tile_info
+
             constraint_vars = set()
 
-            # Put variables into constraint, each identified by a unique number (using index)
-            for (i, (frontier_x, frontier_y)) in enumerate(frontier):
+            # Find constraint variables
+            for (var_index, (frontier_x, frontier_y)) in enumerate(frontier):
                 tile_is_adjacent = (
                     abs(frontier_x - fringe_x) <= 1 and abs(frontier_y - fringe_y) <= 1
                 )
 
                 if tile_is_adjacent:
-                    constraint.add(i)
-                    common_constraints[i].add()
+                    constraint_vars.add(var_index)
+
+                    if var_index in var_to_constraints:
+                        var_to_constraints[var_index].add(constraint_index)
+                    else:
+                        var_to_constraints[var_index] = {constraint_index}
+
+            # # Convert to immutable set so that it becomes hashable (for O(1) lookups)
+            # # and we can make use of the in-built set intersection method later
+            # constraint_vars = set(constraint_vars)
 
             constraint = (constraint_vars, num_unknown_adjacent_mines)
-            constraints.add(constraint)
+            constraints.append(constraint)
 
-        common_constraints = [set() for _ in range(len(matrix[0]))]
+        return constraints, var_to_constraints
 
-        for (i, constraint) in enumerate(matrix):
-            for (j, is_var_included) in enumerate(constraint[:-1]):
-                if is_var_included:
-                    common_constraints[j].add(i)
+    def naive_deduction_strategy(self, disjoint_sections):
+        sure_moves = set()
 
-    def naive_deduction_strategy(self, frontier, fringe):
-        start0 = time.time()
-        constraints, var_to_constraints = self.build_constraints(frontier, fringe)
-        end0 = time.time()
-        print(f"pre-process: {end0 - start0}")
+        for (frontier, fringe) in disjoint_sections:
+            frontier = list(frontier)  # Order the frontier
 
-        start = time.time()
+            # start0 = time.time()
+            constraints, var_to_constraints = self.build_constraints(frontier, fringe)
+            # end0 = time.time()
+            # diff0 = end0 - start0
+            # print(f"pre-process: {diff0:.5f}")
 
-        last_unchecked_index = 0
+            # start1 = time.time()
+            var_index_sure_moves = self._naive_deduction_solve(
+                constraints, var_to_constraints
+            )
+            # end1 = time.time()
+            # diff1 = end1 - start1
+            # print(f"solve: {diff1:.5f}")
+
+            sure_moves |= self.index_sure_moves_to_coords_sure_moves(
+                frontier, var_index_sure_moves
+            )
+
+            # h = self.sureMovesToHighlights(sure_moves)
+            # self.cheekyHighlight(h)
+            # x = 5
+
+        return sure_moves
+
+    def index_sure_moves_to_coords_sure_moves(self, frontier, var_index_sure_moves):
+        return set(
+            (*(frontier[var_index]), is_mine)
+            for (var_index, is_mine) in var_index_sure_moves
+        )
+
+    def _naive_deduction_solve(self, constraints, var_to_constraint_indexes):
+        indexes_to_check = list(range(len(constraints) - 1))
 
         # Create all subset-diff constraints
-        while last_unchecked_index < len(matrix):
-            # new_constraints = []
-            # comparisons_left = False
+        for constraint_index in indexes_to_check:
+            (variables, target_sum) = constraints[constraint_index]
 
-            for constraint_index in range(last_unchecked_index, len(matrix)):
-                constraint = matrix[constraint_index]
-                # for other_constraint in matrix:
-                #     if constraint == other_constraint:
-                #         continue
+            # Get all constraints that share a variable with current constraint
+            coupled_constraints_indexes = [
+                var_to_constraint_indexes[x] for x in variables
+            ]
 
-                #     if new_constraint := self.getStrictSubsetConstraint(constraint, other_constraint):
-                #         if new_constraint not in matrix and new_constraint not in new_constraints:
-                #             new_constraints.append(new_constraint)
-                #             comparisons_left = True
-                superset_constraints = [
-                    common_constraints[k]
-                    for (k, is_var_included) in enumerate(constraint[:-1])
-                    if is_var_included
-                ]
-                supersets = (
-                    set.intersection(*superset_constraints)
-                    if superset_constraints
-                    else set()
-                )
-                supersets.remove(constraint_index)
+            # Filter to constraints that share all variables, i.e., constraints whose variables are a superset
+            # of current constraint
+            superset_constraints_indexes = set.intersection(
+                *coupled_constraints_indexes
+            )
 
-                for superset_index in supersets:
-                    superset_constraint = matrix[superset_index]
+            for i in superset_constraints_indexes:
+                (superset_vars, superset_target) = constraints[i]
 
-                    vars = []
-                    new_constraint = []
-                    constraint_has_no_variables = True
+                complement_vars = superset_vars - variables
 
-                    for j in range(len(constraint) - 1):
-                        if superset_constraint[j] and not constraint[j]:
-                            new_val = 1
-                            vars.append(j)
-                            constraint_has_no_variables = False
-                        else:
-                            new_val = 0
+                if not complement_vars:
+                    # Superset constraint not a strict superset; they had the exact same variables.
+                    continue
 
-                        new_constraint.append(new_val)
+                complement_target = superset_target - target_sum
+                complement_constraint = (complement_vars, complement_target)
 
-                    if constraint_has_no_variables:
-                        continue
+                if complement_constraint in constraints:
+                    # Don't duplicate existing constraint
+                    continue
 
-                    new_target = superset_constraint[-1] - constraint[-1]
-                    new_constraint.append(new_target)
+                constraints.append(complement_constraint)
+                indexes_to_check.append(len(constraints) - 1)
+                # # Constraint already exists, let's check if new target sum is lower
+                # existing_target_sum = constraints[complement_vars]
 
-                    if new_constraint not in matrix:
-                        matrix.append(new_constraint)
+                # if existing_target_sum <= complement_target:
+                #     # New target sum is not an improvement, no need to update known constraint
+                #     continue
 
-                        for var in vars:
-                            new_constraint_index = len(matrix) - 1
-                            common_constraints[var].add(new_constraint_index)
+                # constraints[complement_vars] = complement_target
 
-                x = 5
+                # # Add new constraint to list of constraints to check
+                # constraint = (complement_vars, complement_target)
+                # constraints_to_check.append(constraint)
 
-            # matrix.extend(new_constraints)
-
-            last_unchecked_index += 1
-
-        end = time.time()
-        print(f"creating constraints: {end - start}")
         moves = set()
+        # constraints = list(constraints) # Copy, we do not want a direct reference
+        constraints_changed = True
 
-        exhausted_moves_search = False
-        start2 = time.time()
-        while not exhausted_moves_search:
-            exhausted_moves_search = True
+        while constraints_changed:
+            constraints_changed = False
 
-            # Extract all solutions
-            for constraint in matrix:
-                variables, target_sum = constraint[:-1], constraint[-1]
-                number_of_variables_in_constraint = sum(variables)
+            # Get moves from constraints and updated constraints list (all constraints that had a solution are removed)
+            (
+                _,
+                new_moves,
+            ) = self.constraints_boundary_solutions(constraints)
 
-                is_mine = None
+            # Filter out known moves
+            new_moves -= moves
 
-                if target_sum == number_of_variables_in_constraint:
-                    is_mine = True
-                elif target_sum == 0:
-                    is_mine = False
+            # Update constraints based on discovered solutions
+            for (var, is_mine) in new_moves:
+                constraints_changed = True
 
-                if is_mine is not None:
-                    for (i, is_var_included) in enumerate(variables):
-                        if is_var_included and (i, is_mine) not in moves:
-                            moves.add((i, is_mine))
-                            exhausted_moves_search = False
+                for i in var_to_constraint_indexes[var]:
+                    (other_vars, other_target) = constraints[i]
+                    other_vars.discard(var)
 
-                            # Update constraint matrix based on solution
-                            for j in range(len(matrix)):
-                                row = matrix[j]
+                    if is_mine:
+                        other_target -= 1
 
-                                if row[i]:
-                                    row[i] = 0
-                                    if is_mine:
-                                        row[-1] -= 1
+                    constraints[i] = (other_vars, other_target)
 
-        end2 = time.time()
-        print(
-            f"Finding solutions: {end2- start2}\tfactor: {round((end-start)/(end2-start2), 2)}\n"
-        )
+            moves |= new_moves
 
         return moves
 
-    def deduce_moves_from_constraint_matrix(self, matrix):
-        comparisons_left = True
-
-        start0 = time.time()
-        common_constraints = [set() for _ in range(len(matrix[0]))]
-
-        for (i, constraint) in enumerate(matrix):
-            for (j, is_var_included) in enumerate(constraint[:-1]):
-                if is_var_included:
-                    common_constraints[j].add(i)
-
-        end0 = time.time()
-        print(f"pre-process: {end0 - start0}")
-
-        start = time.time()
-
-        last_unchecked_index = 0
-
-        # Create all subset-diff constraints
-        while last_unchecked_index < len(matrix):
-            # new_constraints = []
-            # comparisons_left = False
-
-            for constraint_index in range(last_unchecked_index, len(matrix)):
-                constraint = matrix[constraint_index]
-                # for other_constraint in matrix:
-                #     if constraint == other_constraint:
-                #         continue
-
-                #     if new_constraint := self.getStrictSubsetConstraint(constraint, other_constraint):
-                #         if new_constraint not in matrix and new_constraint not in new_constraints:
-                #             new_constraints.append(new_constraint)
-                #             comparisons_left = True
-                superset_constraints = [
-                    common_constraints[k]
-                    for (k, is_var_included) in enumerate(constraint[:-1])
-                    if is_var_included
-                ]
-                supersets = (
-                    set.intersection(*superset_constraints)
-                    if superset_constraints
-                    else set()
-                )
-                supersets.remove(constraint_index)
-
-                for superset_index in supersets:
-                    superset_constraint = matrix[superset_index]
-
-                    vars = []
-                    new_constraint = []
-                    constraint_has_no_variables = True
-
-                    for j in range(len(constraint) - 1):
-                        if superset_constraint[j] and not constraint[j]:
-                            new_val = 1
-                            vars.append(j)
-                            constraint_has_no_variables = False
-                        else:
-                            new_val = 0
-
-                        new_constraint.append(new_val)
-
-                    if constraint_has_no_variables:
-                        continue
-
-                    new_target = superset_constraint[-1] - constraint[-1]
-                    new_constraint.append(new_target)
-
-                    if new_constraint not in matrix:
-                        matrix.append(new_constraint)
-
-                        for var in vars:
-                            new_constraint_index = len(matrix) - 1
-                            common_constraints[var].add(new_constraint_index)
-
-                x = 5
-
-            # matrix.extend(new_constraints)
-
-            last_unchecked_index += 1
-
-        end = time.time()
-        print(f"creating constraints: {end - start}")
+    def constraints_boundary_solutions(self, constraints):
         moves = set()
+        constraints_without_solution = []
 
-        exhausted_moves_search = False
-        start2 = time.time()
-        while not exhausted_moves_search:
-            exhausted_moves_search = True
+        for constraint in constraints:
+            (variables, target_sum) = constraint
 
-            # Extract all solutions
-            for constraint in matrix:
-                variables, target_sum = constraint[:-1], constraint[-1]
-                number_of_variables_in_constraint = sum(variables)
+            if target_sum == len(variables):
+                is_mine = True
+            elif target_sum == 0:
+                is_mine = False
+            else:
+                constraints_without_solution.append(constraint)
+                continue
 
-                is_mine = None
+            for var in variables:
+                moves.add((var, is_mine))
 
-                if target_sum == number_of_variables_in_constraint:
-                    is_mine = True
-                elif target_sum == 0:
-                    is_mine = False
+        return (constraints_without_solution, moves)
 
-                if is_mine is not None:
-                    for (i, is_var_included) in enumerate(variables):
-                        if is_var_included and (i, is_mine) not in moves:
-                            moves.add((i, is_mine))
-                            exhausted_moves_search = False
+    # def deduce_moves_from_constraint_matrix(self, matrix):
+    #     comparisons_left = True
 
-                            # Update constraint matrix based on solution
-                            for j in range(len(matrix)):
-                                row = matrix[j]
+    #     start0 = time.time()
+    #     common_constraints = [set() for _ in range(len(matrix[0]))]
 
-                                if row[i]:
-                                    row[i] = 0
-                                    if is_mine:
-                                        row[-1] -= 1
+    #     for (i, constraint) in enumerate(matrix):
+    #         for (j, is_var_included) in enumerate(constraint[:-1]):
+    #             if is_var_included:
+    #                 common_constraints[j].add(i)
 
-        end2 = time.time()
-        print(
-            f"Finding solutions: {end2- start2}\tfactor: {round((end-start)/(end2-start2), 2)}\n"
-        )
+    #     end0 = time.time()
+    #     print(f"pre-process: {end0 - start0}")
 
-        return moves
+    #     start = time.time()
+
+    #     last_unchecked_index = 0
+
+    #     # Create all subset-diff constraints
+    #     while last_unchecked_index < len(matrix):
+    #         # new_constraints = []
+    #         # comparisons_left = False
+
+    #         for constraint_index in range(last_unchecked_index, len(matrix)):
+    #             constraint = matrix[constraint_index]
+    #             # for other_constraint in matrix:
+    #             #     if constraint == other_constraint:
+    #             #         continue
+
+    #             #     if new_constraint := self.getStrictSubsetConstraint(constraint, other_constraint):
+    #             #         if new_constraint not in matrix and new_constraint not in new_constraints:
+    #             #             new_constraints.append(new_constraint)
+    #             #             comparisons_left = True
+    #             superset_constraints = [
+    #                 common_constraints[k]
+    #                 for (k, is_var_included) in enumerate(constraint[:-1])
+    #                 if is_var_included
+    #             ]
+    #             supersets = (
+    #                 set.intersection(*superset_constraints)
+    #                 if superset_constraints
+    #                 else set()
+    #             )
+    #             supersets.remove(constraint_index)
+
+    #             for superset_index in supersets:
+    #                 superset_constraint = matrix[superset_index]
+
+    #                 vars = []
+    #                 new_constraint = []
+    #                 constraint_has_no_variables = True
+
+    #                 for j in range(len(constraint) - 1):
+    #                     if superset_constraint[j] and not constraint[j]:
+    #                         new_val = 1
+    #                         vars.append(j)
+    #                         constraint_has_no_variables = False
+    #                     else:
+    #                         new_val = 0
+
+    #                     new_constraint.append(new_val)
+
+    #                 if constraint_has_no_variables:
+    #                     continue
+
+    #                 new_target = superset_constraint[-1] - constraint[-1]
+    #                 new_constraint.append(new_target)
+
+    #                 if new_constraint not in matrix:
+    #                     matrix.append(new_constraint)
+
+    #                     for var in vars:
+    #                         new_constraint_index = len(matrix) - 1
+    #                         common_constraints[var].add(new_constraint_index)
+
+    #             x = 5
+
+    #         # matrix.extend(new_constraints)
+
+    #         last_unchecked_index += 1
+
+    #     end = time.time()
+    #     print(f"creating constraints: {end - start}")
+    #     moves = set()
+
+    #     exhausted_moves_search = False
+    #     start2 = time.time()
+    #     while not exhausted_moves_search:
+    #         exhausted_moves_search = True
+
+    #         # Extract all solutions
+    #         for constraint in matrix:
+    #             variables, target_sum = constraint[:-1], constraint[-1]
+    #             number_of_variables_in_constraint = sum(variables)
+
+    #             is_mine = None
+
+    #             if target_sum == number_of_variables_in_constraint:
+    #                 is_mine = True
+    #             elif target_sum == 0:
+    #                 is_mine = False
+
+    #             if is_mine is not None:
+    #                 for (i, is_var_included) in enumerate(variables):
+    #                     if is_var_included and (i, is_mine) not in moves:
+    #                         moves.add((i, is_mine))
+    #                         exhausted_moves_search = False
+
+    #                         # Update constraint matrix based on solution
+    #                         for j in range(len(matrix)):
+    #                             row = matrix[j]
+
+    #                             if row[i]:
+    #                                 row[i] = 0
+    #                                 if is_mine:
+    #                                     row[-1] -= 1
+
+    #     end2 = time.time()
+    #     print(
+    #         f"Finding solutions: {end2- start2}\tfactor: {round((end-start)/(end2-start2), 2)}\n"
+    #     )
+
+    # return moves
 
     def getStrictSubsetConstraint(self, constraint1, constraint2):
         vars1, target1 = constraint1[:-1], constraint1[-1]

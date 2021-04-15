@@ -20,11 +20,11 @@ def main():
 def main_play():
     game_seeds = None
     human_player = False
-    profile = False
+    profile = True
     benchmark = False
     num_games_profile = 100
-    num_games_benchmark = 10
-    num_games_other = 10
+    num_games_benchmark = 100
+    num_games_other = 100
     config = {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
     run_seed = 40  # Same run seed as main experiment
     agent_seed = 4040  # Same agent seed as main experiment
@@ -38,7 +38,7 @@ def main_play():
         seed=agent_seed,
         sample_size=sample_size,
         use_num_mines_constraint=True,
-        can_flag=False,
+        can_flag=True,
     )
     linear_solver_agent = LinearEquationsSolver(
         seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False
@@ -51,22 +51,22 @@ def main_play():
 
     if profile:
         print("Profiling. Running {} games...".format(num_games_profile))
-        cProfile.run(
-            "minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)",
-            "solver1.prof",
-        )
-        cProfile.run(
-            "minesweeper.run(NoUnnecessaryGuessSolver(seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=True), config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)",
-            "solver2.prof",
-        )
+        command = "minesweeper.run(agent, config=config, visualise=False, verbose=False, num_games=num_games_profile, seed=run_seed, game_seeds=game_seeds)"
+        output_location = "solver1.prof"
+
+        # Using runctx so that the defined paramters for agent and run can be passed into the command
+        # (regular .run() complains that those variables are not defined)
+        cProfile.runctx(command, globals(), locals(), output_location)
     if benchmark:
         # sample_sizes = [(32, 18)]
         # u = [True]
         # sample_sizes = [(4, 4), (5, 5), (6, 6), (32, 18)]
         # u = [True, False]
         # configs = [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}]
-        sample_sizes = [(18, 18)]
-        configs = [{"rows": 16, "columns": 16, "num_mines": 40}]
+        sample_sizes = [None]
+        configs = [
+            {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
+        ]
         u = [True]
         combinations = len(sample_sizes) * len(u) * len(configs)
         print(
