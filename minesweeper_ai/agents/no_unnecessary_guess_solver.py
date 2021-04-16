@@ -467,10 +467,38 @@ class NoUnnecessaryGuessSolver(Agent):
             frontier, fringe
         )
 
-        constraints, var_to_constraint_indexes = self.expand_constraints(
-            constraints, var_to_constraint_indexes
-        )
+        moves = set()
+        constraints_changed = True
 
+        while constraints_changed:
+            constraints_changed = False
+
+            # Get moves from current constraint pool & update
+            result = self.find_moves_and_update_constraints(
+                constraints, var_to_constraint_indexes
+            )
+            (new_moves, constraints, var_to_constraint_indexes) = result
+
+            moves |= new_moves
+
+            # Look for new sub-constraints
+            new_constraints = self.find_new_sub_constraints(
+                constraints, var_to_constraint_indexes
+            )
+
+            # Add new constraints, if any
+            for constraint in new_constraints:
+                constraints_changed = True
+
+                constraints.append(constraint)
+                new_index = len(constraints) - 1
+
+                for var in constraint[0]:
+                    var_to_constraint_indexes[var].add(new_index)
+
+        return moves
+
+    def find_moves_and_update_constraints(self, constraints, var_to_constraint_indexes):
         moves = set()
         constraints_changed = True
 
@@ -483,29 +511,40 @@ class NoUnnecessaryGuessSolver(Agent):
             # Filter out known moves
             new_moves -= moves
 
-            # Update constraints based on discovered solutions
-            for (var, is_mine) in new_moves:
+            if new_moves:
                 constraints_changed = True
 
-                for i in var_to_constraint_indexes[var]:
-                    (other_vars, other_target) = constraints[i]
-                    other_vars.discard(var)
+                moves |= new_moves
 
-                    if is_mine:
-                        other_target = tuple(x - 1 for x in other_target)
+                result = self.update_constraints(
+                    constraints, var_to_constraint_indexes, new_moves
+                )
 
-                    constraints[i] = (other_vars, other_target)
+                (constraints, var_to_constraint_indexes) = result
 
-            moves |= new_moves
+        return (moves, constraints, var_to_constraint_indexes)
 
-        return moves
+    def update_constraints(self, constraints, var_to_constraint_indexes, moves):
+        # Update constraints based on discovered solutions
+        for (var, is_mine) in moves:
+            for i in var_to_constraint_indexes[var]:
+                (other_vars, other_target) = constraints[i]
+                other_vars.discard(var)
 
-    def expand_constraints(self, constraints, var_to_constraint_indexes):
-        indexes_to_check = list(range(len(constraints) - 1))
+                if is_mine:
+                    other_target = tuple(x - 1 for x in other_target)
+
+                constraints[i] = (other_vars, other_target)
+
+            del var_to_constraint_indexes[var]
+
+        return constraints, var_to_constraint_indexes
+
+    def find_new_sub_constraints(self, constraints, var_to_constraint_indexes):
+        new_constraints = []
 
         # Create all subset-diff constraints
-        for constraint_index in indexes_to_check:
-            constraint = constraints[constraint_index]
+        for (i, constraint) in enumerate(constraints):
             (vars, target) = constraint
 
             # Get all constraints that share a variable with current constraint
@@ -513,26 +552,23 @@ class NoUnnecessaryGuessSolver(Agent):
             for x in vars:
                 coupled_constraints_indexes |= var_to_constraint_indexes[x]
 
-            for i in coupled_constraints_indexes:
-                # (other_vars, other_target) = constraints[i]
-                other_constraint = constraints[i]
+            # Don't need to compare current constraint to itself - won't get any useful sub-constraints
+            coupled_constraints_indexes.discard(i)
+
+            for j in coupled_constraints_indexes:
+                other_constraint = constraints[j]
                 sub_constraints = self.get_sub_constraints(constraint, other_constraint)
 
-                # Filter out constraints that already exist
-                new_constraints = filterfalse(
-                    lambda x: x in constraints, sub_constraints
-                )
+                # Filter out empty and existing constraints before adding
+                for sub_constraint in sub_constraints:
+                    if (
+                        sub_constraint[0]
+                        and sub_constraint not in constraints
+                        and sub_constraint not in new_constraints
+                    ):
+                        new_constraints.append(sub_constraint)
 
-                for new_constraint in new_constraints:
-                    constraints.append(new_constraint)
-
-                    new_index = len(constraints) - 1
-                    indexes_to_check.append(new_index)
-
-                    for var in new_constraint[0]:
-                        var_to_constraint_indexes[var].add(new_index)
-
-        return (constraints, var_to_constraint_indexes)
+        return new_constraints
 
     def get_sub_constraints(self, constraint1, constraint2):
         vars1, target1 = constraint1
