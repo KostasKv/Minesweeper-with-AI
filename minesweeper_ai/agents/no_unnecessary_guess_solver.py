@@ -5,8 +5,6 @@ from copy import copy
 import time
 from collections import deque
 
-from sympy import Matrix
-
 from .cp_solver import CpSolver
 from .agent import Agent
 from minesweeper_ai._game import _Game
@@ -334,27 +332,36 @@ class NoUnnecessaryGuessSolver(Agent):
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
 
-        # # SPS
-        # sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
+        self.highlightSample(sample)
 
-        # # Brute force
+        # SPS
+        sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
+
+        # Brute force
         disjoint_sections = self.getDisjointSections(sample)
-        # mines_left = self.mines_left if self.use_num_mines_constraint else None
-        # brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(sample, disjoint_sections, sps_sure_moves, mines_left)
+        mines_left = self.mines_left if self.use_num_mines_constraint else None
+        brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(
+            sample, disjoint_sections, sps_sure_moves, mines_left
+        )
 
         deduction_moves = self.naive_deduction_strategy(disjoint_sections)
-        self.removeAllSampleHighlights(sample)
-        # original_moves_union = sps_sure_moves | brute_sure_moves
-        # if sym_diff := linear_strat_sure_moves ^ original_moves_union:
-        #     left = linear_strat_sure_moves - original_moves_union
-        #     right = original_moves_union - linear_strat_sure_moves
+        # self.removeAllSampleHighlights(sample)
 
-        #     # DEBUG: highlights n stuff
-        #     self.highlightSample(sample)
-        #     hl = self.sureMovesToHighlights(left)
-        #     hr = self.sureMovesToHighlights(right)
-        #     self.cheekyHighlight(hr)
-        #     self.removeAllSampleHighlights(sample)
+        # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
+        # than the sps+brute approach
+        original_moves_union = sps_sure_moves | brute_sure_moves
+        if sym_diff := deduction_moves ^ original_moves_union:
+            left = deduction_moves - original_moves_union
+            right = original_moves_union - deduction_moves
+
+            # DEBUG: highlights n stuff
+
+            hl = self.sureMovesToHighlights(left)
+            hr = self.sureMovesToHighlights(right)
+            self.cheekyHighlight(hr)
+            y = 5
+
+        self.removeAllSampleHighlights(sample)
 
         # sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
         # self.sample_stats_this_turn.append(sample_stats)
@@ -422,11 +429,9 @@ class NoUnnecessaryGuessSolver(Agent):
                     else:
                         var_to_constraints[var_index] = {constraint_index}
 
-            # # Convert to immutable set so that it becomes hashable (for O(1) lookups)
-            # # and we can make use of the in-built set intersection method later
-            # constraint_vars = set(constraint_vars)
+            target_range = (num_unknown_adjacent_mines, num_unknown_adjacent_mines)
+            constraint = (constraint_vars, target_range)
 
-            constraint = (constraint_vars, num_unknown_adjacent_mines)
             constraints.append(constraint)
 
         return constraints, var_to_constraints
@@ -437,19 +442,13 @@ class NoUnnecessaryGuessSolver(Agent):
         for (frontier, fringe) in disjoint_sections:
             frontier = list(frontier)  # Order the frontier
 
-            # start0 = time.time()
-            constraints, var_to_constraints = self.build_constraints(frontier, fringe)
-            # end0 = time.time()
-            # diff0 = end0 - start0
-            # print(f"pre-process: {diff0:.5f}")
+            # self._naive_deduction_solve_section(frontier, fringe)
 
-            # start1 = time.time()
+            constraints, var_to_constraints = self.build_constraints(frontier, fringe)
+
             var_index_sure_moves = self._naive_deduction_solve(
                 constraints, var_to_constraints
             )
-            # end1 = time.time()
-            # diff1 = end1 - start1
-            # print(f"solve: {diff1:.5f}")
 
             sure_moves |= self.index_sure_moves_to_coords_sure_moves(
                 frontier, var_index_sure_moves
@@ -468,66 +467,18 @@ class NoUnnecessaryGuessSolver(Agent):
         )
 
     def _naive_deduction_solve(self, constraints, var_to_constraint_indexes):
-        indexes_to_check = list(range(len(constraints) - 1))
-
-        # Create all subset-diff constraints
-        for constraint_index in indexes_to_check:
-            (variables, target_sum) = constraints[constraint_index]
-
-            # Get all constraints that share a variable with current constraint
-            coupled_constraints_indexes = [
-                var_to_constraint_indexes[x] for x in variables
-            ]
-
-            # Filter to constraints that share all variables, i.e., constraints whose variables are a superset
-            # of current constraint
-            superset_constraints_indexes = set.intersection(
-                *coupled_constraints_indexes
-            )
-
-            for i in superset_constraints_indexes:
-                (superset_vars, superset_target) = constraints[i]
-
-                complement_vars = superset_vars - variables
-
-                if not complement_vars:
-                    # Superset constraint not a strict superset; they had the exact same variables.
-                    continue
-
-                complement_target = superset_target - target_sum
-                complement_constraint = (complement_vars, complement_target)
-
-                if complement_constraint in constraints:
-                    # Don't duplicate existing constraint
-                    continue
-
-                constraints.append(complement_constraint)
-                indexes_to_check.append(len(constraints) - 1)
-                # # Constraint already exists, let's check if new target sum is lower
-                # existing_target_sum = constraints[complement_vars]
-
-                # if existing_target_sum <= complement_target:
-                #     # New target sum is not an improvement, no need to update known constraint
-                #     continue
-
-                # constraints[complement_vars] = complement_target
-
-                # # Add new constraint to list of constraints to check
-                # constraint = (complement_vars, complement_target)
-                # constraints_to_check.append(constraint)
+        constraints, var_to_constraint_indexes = self.expand_constraints(
+            constraints, var_to_constraint_indexes
+        )
 
         moves = set()
-        # constraints = list(constraints) # Copy, we do not want a direct reference
         constraints_changed = True
 
         while constraints_changed:
             constraints_changed = False
 
             # Get moves from constraints and updated constraints list (all constraints that had a solution are removed)
-            (
-                _,
-                new_moves,
-            ) = self.constraints_boundary_solutions(constraints)
+            new_moves = self.constraints_boundary_solutions(constraints)
 
             # Filter out known moves
             new_moves -= moves
@@ -541,7 +492,7 @@ class NoUnnecessaryGuessSolver(Agent):
                     other_vars.discard(var)
 
                     if is_mine:
-                        other_target -= 1
+                        other_target = tuple(x - 1 for x in other_target)
 
                     constraints[i] = (other_vars, other_target)
 
@@ -549,25 +500,111 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return moves
 
+    def expand_constraints(self, constraints, var_to_constraint_indexes):
+        indexes_to_check = list(range(len(constraints) - 1))
+
+        # Create all subset-diff constraints
+        for constraint_index in indexes_to_check:
+            constraint = constraints[constraint_index]
+            (vars, target) = constraint
+
+            # Get all constraints that share a variable with current constraint
+            coupled_constraints_indexes = set()
+            for x in vars:
+                coupled_constraints_indexes |= var_to_constraint_indexes[x]
+
+            for i in coupled_constraints_indexes:
+                # (other_vars, other_target) = constraints[i]
+                other_constraint = constraints[i]
+                sub_constraints = self.get_sub_constraints(constraint, other_constraint)
+
+                # Filter out constraints that already exist
+                new_constraints = filterfalse(
+                    lambda x: x in constraints, sub_constraints
+                )
+
+                for new_constraint in new_constraints:
+                    constraints.append(new_constraint)
+
+                    new_index = len(constraints) - 1
+                    indexes_to_check.append(new_index)
+
+                    for var in new_constraint[0]:
+                        var_to_constraint_indexes[var].add(new_index)
+
+        return (constraints, var_to_constraint_indexes)
+
+    def get_sub_constraints(self, constraint1, constraint2):
+        vars1, target1 = constraint1
+        vars2, target2 = constraint2
+
+        common_vars = vars1 & vars2
+        complement_vars_1 = vars1 - common_vars
+        complement_vars_2 = vars2 - common_vars
+
+        lower_1 = max(0, target1[0] - len(complement_vars_1))
+        lower_2 = max(0, target2[0] - len(complement_vars_2))
+        upper_1 = min(len(common_vars), target1[1])
+        upper_2 = min(len(common_vars), target2[1])
+
+        common_target = (max(lower_1, lower_2), min(upper_1, upper_2))
+        complement_target_1 = (
+            target1[0] - common_target[1],
+            target1[1] - common_target[0],
+        )
+        complement_target_2 = (
+            target2[0] - common_target[1],
+            target2[1] - common_target[0],
+        )
+
+        # Bound targets to feasible options (i.e. no negative lower-bound or an uppper-bound that exceeds the variable count)
+        common_target = (
+            max(0, common_target[0]),
+            min(len(common_vars), common_target[1]),
+        )
+        complement_target_1 = (
+            max(0, complement_target_1[0]),
+            min(len(complement_vars_1), complement_target_1[1]),
+        )
+        complement_target_2 = (
+            max(0, complement_target_2[0]),
+            min(len(complement_vars_2), complement_target_2[1]),
+        )
+
+        common_constraint = (common_vars, common_target)
+        complement_constraint_1 = (complement_vars_1, complement_target_1)
+        complement_constraint_2 = (complement_vars_2, complement_target_2)
+
+        constraints = (
+            common_constraint,
+            complement_constraint_1,
+            complement_constraint_2,
+        )
+
+        return constraints
+
     def constraints_boundary_solutions(self, constraints):
         moves = set()
-        constraints_without_solution = []
 
         for constraint in constraints:
-            (variables, target_sum) = constraint
+            (variables, target) = constraint
+
+            if target[0] != target[1]:
+                continue
+
+            target_sum = target[0]
 
             if target_sum == len(variables):
                 is_mine = True
             elif target_sum == 0:
                 is_mine = False
             else:
-                constraints_without_solution.append(constraint)
                 continue
 
             for var in variables:
                 moves.add((var, is_mine))
 
-        return (constraints_without_solution, moves)
+        return moves
 
     # def deduce_moves_from_constraint_matrix(self, matrix):
     #     comparisons_left = True
