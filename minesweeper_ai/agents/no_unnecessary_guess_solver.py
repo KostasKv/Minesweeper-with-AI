@@ -440,19 +440,11 @@ class NoUnnecessaryGuessSolver(Agent):
         sure_moves = set()
 
         for (frontier, fringe) in disjoint_sections:
-            frontier = list(frontier)  # Order the frontier
+            # Order the frontier so variables (frontier tiles) can be index-referenced
+            frontier = list(frontier)
 
-            # self._naive_deduction_solve_section(frontier, fringe)
-
-            constraints, var_to_constraints = self.build_constraints(frontier, fringe)
-
-            var_index_sure_moves = self._naive_deduction_solve(
-                constraints, var_to_constraints
-            )
-
-            sure_moves |= self.index_sure_moves_to_coords_sure_moves(
-                frontier, var_index_sure_moves
-            )
+            indexed_moves = self._naive_deduction_solve_section(frontier, fringe)
+            sure_moves |= self.indexed_moves_to_coords_moves(frontier, indexed_moves)
 
             # h = self.sureMovesToHighlights(sure_moves)
             # self.cheekyHighlight(h)
@@ -460,13 +452,21 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return sure_moves
 
-    def index_sure_moves_to_coords_sure_moves(self, frontier, var_index_sure_moves):
-        return set(
-            (*(frontier[var_index]), is_mine)
-            for (var_index, is_mine) in var_index_sure_moves
+    def indexed_moves_to_coords_moves(self, frontier, indexed_moves):
+        transformed_moves = set()
+
+        for (i, is_mine) in indexed_moves:
+            (x, y) = frontier[i]
+            transformed_move = (x, y, is_mine)
+            transformed_moves.add(transformed_move)
+
+        return transformed_moves
+
+    def _naive_deduction_solve_section(self, frontier, fringe):
+        constraints, var_to_constraint_indexes = self.build_constraints(
+            frontier, fringe
         )
 
-    def _naive_deduction_solve(self, constraints, var_to_constraint_indexes):
         constraints, var_to_constraint_indexes = self.expand_constraints(
             constraints, var_to_constraint_indexes
         )
