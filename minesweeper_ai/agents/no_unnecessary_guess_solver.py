@@ -409,10 +409,7 @@ class NoUnnecessaryGuessSolver(Agent):
         constraints = []
         var_to_constraints = dict()
 
-        for (constraint_index, tile_info) in enumerate(fringe):
-
-            (fringe_x, fringe_y, num_unknown_adjacent_mines) = tile_info
-
+        for (fringe_x, fringe_y, num_unknown_adjacent_mines) in fringe:
             constraint_vars = set()
 
             # Find constraint variables
@@ -424,15 +421,18 @@ class NoUnnecessaryGuessSolver(Agent):
                 if tile_is_adjacent:
                     constraint_vars.add(var_index)
 
-                    if var_index in var_to_constraints:
-                        var_to_constraints[var_index].add(constraint_index)
+            mines_range = (num_unknown_adjacent_mines, num_unknown_adjacent_mines)
+            constraint = (constraint_vars, mines_range)
+
+            if constraint not in constraints:
+                constraints.append(constraint)
+                constraint_index = len(constraints) - 1
+
+                for var in constraint_vars:
+                    if var in var_to_constraints:
+                        var_to_constraints[var].add(constraint_index)
                     else:
-                        var_to_constraints[var_index] = {constraint_index}
-
-            target_range = (num_unknown_adjacent_mines, num_unknown_adjacent_mines)
-            constraint = (constraint_vars, target_range)
-
-            constraints.append(constraint)
+                        var_to_constraints[var] = {constraint_index}
 
         return constraints, var_to_constraints
 
@@ -469,6 +469,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         moves = set()
         constraints_changed = True
+        next_constraint_start = 0
 
         while constraints_changed:
             constraints_changed = False
@@ -483,8 +484,11 @@ class NoUnnecessaryGuessSolver(Agent):
 
             # Look for new sub-constraints
             new_constraints = self.find_new_sub_constraints(
-                constraints, var_to_constraint_indexes
+                constraints, var_to_constraint_indexes, next_constraint_start
             )
+
+            next_constraint_start = len(constraints)
+            # next_constraint_start = 0
 
             # Add new constraints, if any
             for constraint in new_constraints:
@@ -532,7 +536,14 @@ class NoUnnecessaryGuessSolver(Agent):
                 other_vars.discard(var)
 
                 if is_mine:
-                    other_target = tuple(x - 1 for x in other_target)
+                    # other_target = tuple(x - 1 for x in other_target)
+                    lower = max(0, other_target[0] - 1)
+                    upper = other_target[1] - 1
+                else:
+                    lower = other_target[0]
+                    upper = min(other_target[1], len(other_vars))
+
+                other_target = (lower, upper)
 
                 constraints[i] = (other_vars, other_target)
 
@@ -540,12 +551,18 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return constraints, var_to_constraint_indexes
 
-    def find_new_sub_constraints(self, constraints, var_to_constraint_indexes):
+    def find_new_sub_constraints(
+        self, constraints, var_to_constraint_indexes, index_start
+    ):
         new_constraints = []
 
         # Create all subset-diff constraints
-        for (i, constraint) in enumerate(constraints):
+        for i in range(index_start, len(constraints)):
+            constraint = constraints[i]
             (vars, target) = constraint
+
+            if not vars:
+                continue
 
             # Get all constraints that share a variable with current constraint
             coupled_constraints_indexes = set()
@@ -557,6 +574,10 @@ class NoUnnecessaryGuessSolver(Agent):
 
             for j in coupled_constraints_indexes:
                 other_constraint = constraints[j]
+
+                if not other_constraint[0]:
+                    continue
+
                 sub_constraints = self.get_sub_constraints(constraint, other_constraint)
 
                 # Filter out empty and existing constraints before adding
