@@ -8,6 +8,7 @@ from minesweeper_ai.agents.random_legal_moves_agent import RandomLegalMovesAgent
 from minesweeper_ai.agents.pick_first_uncovered_agent import PickFirstUncoveredAgent
 from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 from minesweeper_ai.agents.linear_equations_solver import LinearEquationsSolver
+
 from minesweeper_ai.agents.cbr_agent1 import CBRAgent1
 from minesweeper_ai.agents.cbr_agent2 import CBRAgent2
 from bitarray import bitarray
@@ -20,11 +21,11 @@ def main():
 def main_play():
     game_seeds = None
     human_player = False
-    profile = True
+    profile = False
     benchmark = False
-    num_games_profile = 100
-    num_games_benchmark = 100
-    num_games_other = 100
+    num_games_profile = 10
+    num_games_benchmark = 1000
+    num_games_other = 500
     config = {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
     run_seed = 40  # Same run seed as main experiment
     agent_seed = 4040  # Same agent seed as main experiment
@@ -40,9 +41,9 @@ def main_play():
         use_num_mines_constraint=True,
         can_flag=True,
     )
-    linear_solver_agent = LinearEquationsSolver(
-        seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False
-    )
+    # linear_solver_agent = LinearEquationsSolver(
+    #     seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False
+    # )
     cbr_agent_1 = CBRAgent1()
     cbr_agent_2 = CBRAgent2()
 
@@ -62,11 +63,15 @@ def main_play():
         # u = [True]
         # sample_sizes = [(4, 4), (5, 5), (6, 6), (32, 18)]
         # u = [True, False]
-        # configs = [{'rows': 9, 'columns': 9, 'num_mines': 10}, {'rows': 16, 'columns': 16, 'num_mines': 40}, {'rows': 16, 'columns': 30, 'num_mines': 99}]
-        sample_sizes = [None]
         configs = [
-            {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
+            {"rows": 9, "columns": 9, "num_mines": 10, "first_click_is_zero": True},
+            {"rows": 16, "columns": 16, "num_mines": 40, "first_click_is_zero": True},
+            {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True},
         ]
+        sample_sizes = [None]
+        # configs = [
+        #     {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
+        # ]
         u = [True]
         combinations = len(sample_sizes) * len(u) * len(configs)
         print(
@@ -106,7 +111,6 @@ def main_play():
         if human_player:
             agent = None
 
-        # agent.can_flag = True
         results = minesweeper.run(
             agent,
             config=config,
@@ -116,9 +120,7 @@ def main_play():
             seed=run_seed,
             game_seeds=game_seeds,
         )
-        # agent.can_flag = False
-        # results2 = minesweeper.run(agent, config=config, visualise=False, verbose=False, num_games=num_games_other, seed=run_seed, game_seeds=game_seeds)
-        # print(results['wins'], results2['wins'])
+
     print("Program stopped.")
 
 
