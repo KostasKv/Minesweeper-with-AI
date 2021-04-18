@@ -332,36 +332,36 @@ class NoUnnecessaryGuessSolver(Agent):
     def getAllSureMovesFromSample(self, sample, sample_pos):
         self.sample_count += 1
 
-        self.highlightSample(sample)
+        # self.highlightSample(sample)
 
-        # SPS
-        sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
+        # # SPS
+        # sps_sure_moves, sps_duration = self._single_point_strategy_measure_time(sample)
 
-        # Brute force
+        # # Brute force
         disjoint_sections = self.getDisjointSections(sample)
-        mines_left = self.mines_left if self.use_num_mines_constraint else None
-        brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(
-            sample, disjoint_sections, sps_sure_moves, mines_left
-        )
+        # mines_left = self.mines_left if self.use_num_mines_constraint else None
+        # brute_sure_moves, brute_duration = self._brute_force_strategy_measure_time(
+        #     sample, disjoint_sections, sps_sure_moves, mines_left
+        # )
 
         deduction_moves = self.naive_deduction_strategy(disjoint_sections)
         # self.removeAllSampleHighlights(sample)
 
-        # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
-        # than the sps+brute approach
-        original_moves_union = sps_sure_moves | brute_sure_moves
-        if sym_diff := deduction_moves ^ original_moves_union:
-            left = deduction_moves - original_moves_union
-            right = original_moves_union - deduction_moves
+        # # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
+        # # than the sps+brute approach
+        # original_moves_union = sps_sure_moves | brute_sure_moves
+        # if sym_diff := deduction_moves ^ original_moves_union:
+        #     left = deduction_moves - original_moves_union
+        #     right = original_moves_union - deduction_moves
 
-            # DEBUG: highlights n stuff
+        #     # DEBUG: highlights n stuff
 
-            hl = self.sureMovesToHighlights(left)
-            hr = self.sureMovesToHighlights(right)
-            self.cheekyHighlight(hr)
-            y = 5
+        #     hl = self.sureMovesToHighlights(left)
+        #     hr = self.sureMovesToHighlights(right)
+        #     self.cheekyHighlight(hr)
+        #     y = 5
 
-        self.removeAllSampleHighlights(sample)
+        # self.removeAllSampleHighlights(sample)
 
         # sample_stats = self.get_sample_stats(sample, sample_pos, sps_duration, brute_duration, sps_sure_moves, brute_sure_moves, disjoint_sections)
         # self.sample_stats_this_turn.append(sample_stats)
@@ -469,32 +469,38 @@ class NoUnnecessaryGuessSolver(Agent):
 
         moves = set()
         constraints_changed = True
-        next_constraint_start = 0
+
+        # dirty[i] = True means i'th constraint is dirty. A dirty constraint should be
+        # compared with all other constraints when looking for new sub-constraints.
+        # Non-dirty constraints will be ignored (unless coupled with another dirty
+        # constraint in which case it is examined indirectly)
+        dirty = [True] * len(constraints)
 
         while constraints_changed:
             constraints_changed = False
 
             # Get moves from current constraint pool & update
             result = self.find_moves_and_update_constraints(
-                constraints, var_to_constraint_indexes
+                constraints, var_to_constraint_indexes, dirty
             )
-            (new_moves, constraints, var_to_constraint_indexes) = result
+
+            # Unpack
+            (new_moves, constraints, var_to_constraint_indexes, dirty) = result
 
             moves |= new_moves
 
             # Look for new sub-constraints
-            new_constraints = self.find_new_sub_constraints(
-                constraints, var_to_constraint_indexes, next_constraint_start
+            new_constraints, dirty = self.find_new_sub_constraints(
+                constraints, var_to_constraint_indexes, dirty
             )
 
-            next_constraint_start = len(constraints)
-            # next_constraint_start = 0
-
-            # Add new constraints, if any
+            # Add new sub-constraints, if any
             for constraint in new_constraints:
                 constraints_changed = True
 
                 constraints.append(constraint)
+                dirty.append(True)
+
                 new_index = len(constraints) - 1
 
                 for var in constraint[0]:
@@ -502,7 +508,9 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return moves
 
-    def find_moves_and_update_constraints(self, constraints, var_to_constraint_indexes):
+    def find_moves_and_update_constraints(
+        self, constraints, var_to_constraint_indexes, dirty
+    ):
         moves = set()
         constraints_changed = True
 
@@ -521,14 +529,14 @@ class NoUnnecessaryGuessSolver(Agent):
                 moves |= new_moves
 
                 result = self.update_constraints(
-                    constraints, var_to_constraint_indexes, new_moves
+                    constraints, var_to_constraint_indexes, dirty, new_moves
                 )
 
-                (constraints, var_to_constraint_indexes) = result
+                (constraints, var_to_constraint_indexes, dirty) = result
 
-        return (moves, constraints, var_to_constraint_indexes)
+        return (moves, constraints, var_to_constraint_indexes, dirty)
 
-    def update_constraints(self, constraints, var_to_constraint_indexes, moves):
+    def update_constraints(self, constraints, var_to_constraint_indexes, dirty, moves):
         # Update constraints based on discovered solutions
         for (var, is_mine) in moves:
             for i in var_to_constraint_indexes[var]:
@@ -544,25 +552,25 @@ class NoUnnecessaryGuessSolver(Agent):
                     upper = min(other_target[1], len(other_vars))
 
                 other_target = (lower, upper)
-
                 constraints[i] = (other_vars, other_target)
+                dirty[i] = True  # Constraint updated so it needs to be recompared
 
             del var_to_constraint_indexes[var]
 
-        return constraints, var_to_constraint_indexes
+        return constraints, var_to_constraint_indexes, dirty
 
-    def find_new_sub_constraints(
-        self, constraints, var_to_constraint_indexes, index_start
-    ):
+    def find_new_sub_constraints(self, constraints, var_to_constraint_indexes, dirty):
         new_constraints = []
 
         # Create all subset-diff constraints
-        for i in range(index_start, len(constraints)):
+        for i in range(len(constraints)):
             constraint = constraints[i]
             (vars, target) = constraint
 
-            if not vars:
+            if not dirty[i] or not vars:
                 continue
+
+            dirty[i] = False
 
             # Get all constraints that share a variable with current constraint
             coupled_constraints_indexes = set()
@@ -589,7 +597,7 @@ class NoUnnecessaryGuessSolver(Agent):
                     ):
                         new_constraints.append(sub_constraint)
 
-        return new_constraints
+        return new_constraints, dirty
 
     def get_sub_constraints(self, constraint1, constraint2):
         vars1, target1 = constraint1
