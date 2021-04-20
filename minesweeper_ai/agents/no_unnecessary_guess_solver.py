@@ -597,6 +597,7 @@ class NoUnnecessaryGuessSolver(Agent):
             for j in coupled_constraints_indexes:
                 other_constraint = constraints[j]
 
+                # Skip empty-contraints (no variables)
                 if not other_constraint[0]:
                     continue
 
@@ -650,14 +651,11 @@ class NoUnnecessaryGuessSolver(Agent):
             min(len(complement_vars_2), complement_target_2[1]),
         )
 
-        common_constraint = (common_vars, common_target)
-        complement_constraint_1 = (complement_vars_1, complement_target_1)
-        complement_constraint_2 = (complement_vars_2, complement_target_2)
-
+        # Pack
         constraints = (
-            common_constraint,
-            complement_constraint_1,
-            complement_constraint_2,
+            (common_vars, common_target),
+            (complement_vars_1, complement_target_1),
+            (complement_vars_2, complement_target_2),
         )
 
         return constraints
