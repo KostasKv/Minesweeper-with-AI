@@ -3,6 +3,7 @@ from itertools import chain, combinations, filterfalse
 from iteration_utilities import deepflatten
 from copy import copy
 import time
+import math
 
 from .cp_solver import CpSolver
 from .agent import Agent
@@ -17,12 +18,14 @@ class NoUnnecessaryGuessSolver(Agent):
         can_flag=True,
         first_click_pos=None,
         seed=0,
+        naive_alg_steps=None,
     ):
         self.SAMPLE_SIZE = sample_size
         self.use_num_mines_constraint = use_num_mines_constraint
         self.can_flag = can_flag
         self.first_click_pos = first_click_pos
         self.seed = seed
+        self.naive_alg_steps = naive_alg_steps
 
         self.random = None
         self.samples_considered_already = set()
@@ -347,11 +350,10 @@ class NoUnnecessaryGuessSolver(Agent):
         # self.removeAllSampleHighlights(sample)
 
         # # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
-        # # than the sps+brute approach
-        # original_moves_union = sps_sure_moves | brute_sure_moves
-        # if sym_diff := deduction_moves ^ original_moves_union:
-        #     left = deduction_moves - original_moves_union
-        #     right = original_moves_union - deduction_moves
+        # # than the sps approach
+        # if sym_diff := deduction_moves ^ sps_sure_moves:
+        #     left = deduction_moves - sps_sure_moves
+        #     right = sps_sure_moves - deduction_moves
 
         #     # DEBUG: highlights n stuff
 
@@ -474,13 +476,20 @@ class NoUnnecessaryGuessSolver(Agent):
 
         constraints_data = (constraints, var_to_constraint_indexes, dirty)
 
-        return self._naive_deduction_solve_constraints(constraints_data)
+        return self._naive_deduction_solve_constraints(
+            constraints_data, self.naive_alg_steps
+        )
 
-    def _naive_deduction_solve_constraints(self, constraints_data):
+    def _naive_deduction_solve_constraints(self, constraints_data, steps_limit):
         all_moves = set()
         is_changed = True
 
-        while is_changed:
+        if steps_limit is None:
+            steps_limit = math.inf
+
+        step = 0
+
+        while is_changed and step < steps_limit:
             is_changed = False
 
             (moves, constraints_data) = self.find_moves_and_update_constraints(

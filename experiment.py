@@ -23,13 +23,19 @@ from minesweeper_ai.agents.no_unnecessary_guess_solver import NoUnnecessaryGuess
 
 
 def main():
-    experiment = getExperiment4()
+    experiment = getExperiment5()
     batch_size = 5
-    num_processes = psutil.cpu_count(
-        logical=True
-    )  # Use however many logical cores there are on the machine
 
-    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True)
+    # # Use however many logical cores there are on the machine
+    # num_processes = psutil.cpu_count(
+    #     logical=True
+    # )
+
+    # Running naive alg. experiment on home PC. Freeing up processor space so PC can
+    # still be used while script is running.
+    num_processes = psutil.cpu_count(logical=True) - 2
+
+    runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=False)
 
 
 def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=True):
@@ -42,14 +48,14 @@ def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=Tru
 
     task_handler = experiment["task_handler"]
 
-    # Run experiment tasks with multiple processes running in parallel
-    with Pool(processes=num_processes) as p:
-        all_results = list(
-            tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info))
-        )
+    # # Run experiment tasks with multiple processes running in parallel
+    # with Pool(processes=num_processes) as p:
+    #     all_results = list(
+    #         tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info))
+    #     )
 
-    # # DEBUG: single-process run to allow for easier debug sessions
-    # all_results = [task_handler(task_info) for task_info in tasks_info]
+    # DEBUG: single-process run to allow for easier debug sessions
+    all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -604,7 +610,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
 def configToDifficultyString(config):
     if config["columns"] == 8 and config["rows"] == 8:
         difficulty = "Beginner (8x8)"
-    if config["columns"] == 9 and config["rows"] == 9:
+    elif config["columns"] == 9 and config["rows"] == 9:
         difficulty = "Beginner (9x9)"
     elif config["columns"] == 16 and config["rows"] == 16:
         difficulty = "Intermediate (16x16)"
@@ -787,7 +793,8 @@ def getExperiment2():
             "seed": 20,
             "sample_size": None,  # Sample size None means use full grid
             "use_num_mines_constraint": True,
-            "first_click_pos": (3, 3),
+            # "first_click_pos": (3, 3), # TEMPORARY FOR NAIVE ALG. EXPERIMENT
+            "first_click_pos": None,
         },
     }
 
@@ -810,7 +817,8 @@ def getExperiment2():
             ],
         },
         "constant": {
-            "num_games": 100000,
+            # "num_games": 100000,
+            "num_games": 25000,
             "seed": 2020,
             "verbose": False,
             "visualise": False,
@@ -999,6 +1007,86 @@ def getExperiment4():
 
     task_handler = task_handler_store_results_in_database_on_task_finish
     on_finish = None
+
+    experiment = {
+        "title": title,
+        "agent_parameters": agent_parameters,
+        "other_parameters": other_parameters,
+        "task_handler": task_handler,
+        "on_finish": on_finish,
+    }
+
+    return experiment
+
+
+def getExperiment5():
+    """Purpose: Measure performance of naive algorithm."""
+
+    title = "Naive algorithm experiment"
+
+    agent_parameters = {
+        "variable": {"naive_alg_steps": [0, 1, 2, 3, 4, 5, 6, 7, None]},
+        "constant": {
+            "seed": 20,
+            "sample_size": None,  # Sample size None means use full grid
+            # "use_num_mines_constraint": True,
+            "first_click_pos": None,
+        },
+    }
+
+    other_parameters = {
+        "variable": {
+            "config": [
+                {"rows": 8, "columns": 8, "num_mines": 10, "first_click_is_zero": True},
+                {
+                    "rows": 8,
+                    "columns": 8,
+                    "num_mines": 10,
+                    "first_click_is_zero": False,
+                },
+                {"rows": 9, "columns": 9, "num_mines": 10, "first_click_is_zero": True},
+                {
+                    "rows": 9,
+                    "columns": 9,
+                    "num_mines": 10,
+                    "first_click_is_zero": False,
+                },
+                {
+                    "rows": 16,
+                    "columns": 16,
+                    "num_mines": 40,
+                    "first_click_is_zero": True,
+                },
+                {
+                    "rows": 16,
+                    "columns": 16,
+                    "num_mines": 40,
+                    "first_click_is_zero": False,
+                },
+                {
+                    "rows": 16,
+                    "columns": 30,
+                    "num_mines": 99,
+                    "first_click_is_zero": True,
+                },
+                {
+                    "rows": 16,
+                    "columns": 30,
+                    "num_mines": 99,
+                    "first_click_is_zero": False,
+                },
+            ],
+        },
+        "constant": {
+            "num_games": 25000,
+            "seed": 2020,
+            "verbose": False,
+            "visualise": False,
+        },
+    }
+
+    task_handler = complete_task_and_return_results_including_game_info
+    on_finish = saveResultsToCsv
 
     experiment = {
         "title": title,

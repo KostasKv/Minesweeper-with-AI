@@ -40,6 +40,7 @@ def main_play():
         sample_size=sample_size,
         use_num_mines_constraint=True,
         can_flag=True,
+        naive_alg_steps=None,
     )
     # linear_solver_agent = LinearEquationsSolver(
     #     seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False
