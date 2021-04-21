@@ -601,6 +601,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
     results["use_num_mines_constraint"] = agent.use_num_mines_constraint
     results["first_click_pos"] = agent.first_click_pos
     results["first_click_is_zero"] = kargs["config"]["first_click_is_zero"]
+    results["naive_alg_steps"] = agent.naive_alg_steps
     results["parameters_id"] = parameters_id
     results["task_id"] = task_id
 
