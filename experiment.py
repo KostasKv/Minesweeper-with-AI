@@ -48,14 +48,14 @@ def runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=Tru
 
     task_handler = experiment["task_handler"]
 
-    # # Run experiment tasks with multiple processes running in parallel
-    # with Pool(processes=num_processes) as p:
-    #     all_results = list(
-    #         tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info))
-    #     )
+    # Run experiment tasks with multiple processes running in parallel
+    with Pool(processes=num_processes) as p:
+        all_results = list(
+            tqdm(p.imap_unordered(task_handler, tasks_info), total=len(tasks_info))
+        )
 
-    # DEBUG: single-process run to allow for easier debug sessions
-    all_results = [task_handler(task_info) for task_info in tasks_info]
+    # # DEBUG: single-process run to allow for easier debug sessions
+    # all_results = [task_handler(task_info) for task_info in tasks_info]
 
     onEndOfExperiment(experiment, all_results, constants)
 
@@ -793,8 +793,7 @@ def getExperiment2():
             "seed": 20,
             "sample_size": None,  # Sample size None means use full grid
             "use_num_mines_constraint": True,
-            # "first_click_pos": (3, 3), # TEMPORARY FOR NAIVE ALG. EXPERIMENT
-            "first_click_pos": None,
+            "first_click_pos": (3, 3),
         },
     }
 
@@ -817,8 +816,7 @@ def getExperiment2():
             ],
         },
         "constant": {
-            # "num_games": 100000,
-            "num_games": 25000,
+            "num_games": 100000,
             "seed": 2020,
             "verbose": False,
             "visualise": False,
@@ -1029,7 +1027,6 @@ def getExperiment5():
         "constant": {
             "seed": 20,
             "sample_size": None,  # Sample size None means use full grid
-            # "use_num_mines_constraint": True,
             "first_click_pos": None,
         },
     }
