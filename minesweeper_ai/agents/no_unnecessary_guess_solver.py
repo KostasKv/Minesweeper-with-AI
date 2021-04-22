@@ -583,7 +583,9 @@ class NoUnnecessaryGuessSolver(Agent):
                 if not other_constraint[0]:
                     continue
 
-                sub_constraints = self.create_sub_constraints(constraint, other_constraint)
+                sub_constraints = self.create_sub_constraints(
+                    constraint, other_constraint
+                )
 
                 # Filter out empty and existing constraints before adding
                 for sub_constraint in sub_constraints:
@@ -599,47 +601,31 @@ class NoUnnecessaryGuessSolver(Agent):
     def create_sub_constraints(self, constraint1, constraint2):
         vars1, target1 = constraint1
         vars2, target2 = constraint2
-
         common_vars = vars1 & vars2
         complement_vars_1 = vars1 - common_vars
         complement_vars_2 = vars2 - common_vars
-
-        lower_1 = max(0, target1[0] - len(complement_vars_1))
-        lower_2 = max(0, target2[0] - len(complement_vars_2))
-        upper_1 = min(len(common_vars), target1[1])
-        upper_2 = min(len(common_vars), target2[1])
-
-        common_target = (max(lower_1, lower_2), min(upper_1, upper_2))
-        complement_target_1 = (
-            target1[0] - common_target[1],
-            target1[1] - common_target[0],
-        )
-        complement_target_2 = (
-            target2[0] - common_target[1],
-            target2[1] - common_target[0],
-        )
-
-        # Bound targets to feasible options (i.e. no negative lower-bound or an uppper-bound that exceeds the variable count)
+        common_lower_1 = max(0, target1[0] - len(complement_vars_1))
+        common_lower_2 = max(0, target2[0] - len(complement_vars_2))
+        common_upper_1 = min(len(common_vars), target1[1])
+        common_upper_2 = min(len(common_vars), target2[1])
         common_target = (
-            max(0, common_target[0]),
-            min(len(common_vars), common_target[1]),
+            max(common_lower_1, common_lower_2),
+            min(common_upper_1, common_upper_2),
         )
         complement_target_1 = (
-            max(0, complement_target_1[0]),
-            min(len(complement_vars_1), complement_target_1[1]),
+            max(0, target1[0] - common_target[1]),
+            min(len(complement_vars_1), target1[1] - common_target[0]),
         )
         complement_target_2 = (
-            max(0, complement_target_2[0]),
-            min(len(complement_vars_2), complement_target_2[1]),
+            max(0, target2[0] - common_target[1]),
+            min(len(complement_vars_2), target2[1] - common_target[0]),
         )
-
         # Pack
         constraints = (
             (common_vars, common_target),
             (complement_vars_1, complement_target_1),
             (complement_vars_2, complement_target_2),
         )
-
         return constraints
 
     def constraints_boundary_solutions(self, constraints):
