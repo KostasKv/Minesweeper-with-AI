@@ -379,31 +379,20 @@ class NoUnnecessaryGuessSolver(Agent):
         # return sps_sure_moves | brute_sure_moves
         return new_sure_moves
 
-    @staticmethod
-    def deductive_strategy(sample, disjoint_sections):
+    def naive_deduction_strategy(self, disjoint_sections):
         sure_moves = set()
 
         for (frontier, fringe) in disjoint_sections:
-            frontier = list(frontier)  # Order the frontier tiles
-            constraints = createAdjacentMinesConstraintMatrixOfSample(frontier, fringe)
-            # col_moves = self.deduce_moves_from_constraint_matrix([[1,1,0,1],[1,1,1,1]])
-            col_moves = deduce_moves_from_constraint_matrix(constraints)
+            # Order the frontier so variables (frontier tiles) can be index-referenced
+            frontier = list(frontier)
 
-            # Convert frontier results into sure moves.
-            for (index, is_mine) in col_moves:
-                coords = frontier[index]
-                sure_moves.add(
-                    (
-                        *coords,
-                        is_mine,
-                    )
-                )
+            indexed_moves = self._naive_deduction_solve_section(frontier, fringe)
+            sure_moves |= self.indexed_moves_to_coords_moves(frontier, indexed_moves)
 
-            h = self.sureMovesToHighlights(sure_moves)
-            self.cheekyHighlight(h)
-            x = 6
+            # h = self.sureMovesToHighlights(sure_moves)
+            # self.cheekyHighlight(h)
+            # x = 5
 
-        self.removeAllSampleHighlights(sample)
         return sure_moves
 
     def build_constraints(self, frontier, fringe):
@@ -436,22 +425,6 @@ class NoUnnecessaryGuessSolver(Agent):
                         var_to_constraints[var] = {constraint_index}
 
         return constraints, var_to_constraints
-
-    def naive_deduction_strategy(self, disjoint_sections):
-        sure_moves = set()
-
-        for (frontier, fringe) in disjoint_sections:
-            # Order the frontier so variables (frontier tiles) can be index-referenced
-            frontier = list(frontier)
-
-            indexed_moves = self._naive_deduction_solve_section(frontier, fringe)
-            sure_moves |= self.indexed_moves_to_coords_moves(frontier, indexed_moves)
-
-            # h = self.sureMovesToHighlights(sure_moves)
-            # self.cheekyHighlight(h)
-            # x = 5
-
-        return sure_moves
 
     def indexed_moves_to_coords_moves(self, frontier, indexed_moves):
         transformed_moves = set()
@@ -610,7 +583,7 @@ class NoUnnecessaryGuessSolver(Agent):
                 if not other_constraint[0]:
                     continue
 
-                sub_constraints = self.get_sub_constraints(constraint, other_constraint)
+                sub_constraints = self.create_sub_constraints(constraint, other_constraint)
 
                 # Filter out empty and existing constraints before adding
                 for sub_constraint in sub_constraints:
@@ -623,7 +596,7 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return (new_constraints, dirty)
 
-    def get_sub_constraints(self, constraint1, constraint2):
+    def create_sub_constraints(self, constraint1, constraint2):
         vars1, target1 = constraint1
         vars2, target2 = constraint2
 
