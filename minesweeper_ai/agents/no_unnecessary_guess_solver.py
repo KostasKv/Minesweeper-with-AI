@@ -395,6 +395,23 @@ class NoUnnecessaryGuessSolver(Agent):
 
         return sure_moves
 
+    def _naive_deduction_solve_section(self, frontier, fringe):
+        constraints, var_to_constraint_indexes = self.build_constraints(
+            frontier, fringe
+        )
+
+        # dirty[i] = True means i'th constraint is dirty. A dirty constraint should be
+        # compared with all other constraints when looking for new sub-constraints.
+        # Non-dirty constraints will be ignored (unless coupled with another dirty
+        # constraint in which case it is examined indirectly)
+        dirty = [True] * len(constraints)
+
+        constraints_data = (constraints, var_to_constraint_indexes, dirty)
+
+        return self._naive_deduction_solve_constraints(
+            constraints_data, self.naive_alg_steps
+        )
+
     def build_constraints(self, frontier, fringe):
         constraints = []
         var_to_constraints = dict()
@@ -435,23 +452,6 @@ class NoUnnecessaryGuessSolver(Agent):
             transformed_moves.add(transformed_move)
 
         return transformed_moves
-
-    def _naive_deduction_solve_section(self, frontier, fringe):
-        constraints, var_to_constraint_indexes = self.build_constraints(
-            frontier, fringe
-        )
-
-        # dirty[i] = True means i'th constraint is dirty. A dirty constraint should be
-        # compared with all other constraints when looking for new sub-constraints.
-        # Non-dirty constraints will be ignored (unless coupled with another dirty
-        # constraint in which case it is examined indirectly)
-        dirty = [True] * len(constraints)
-
-        constraints_data = (constraints, var_to_constraint_indexes, dirty)
-
-        return self._naive_deduction_solve_constraints(
-            constraints_data, self.naive_alg_steps
-        )
 
     def _naive_deduction_solve_constraints(self, constraints_data, steps_limit):
         all_moves = set()

@@ -39,7 +39,7 @@ def main_play():
         seed=agent_seed,
         sample_size=sample_size,
         use_num_mines_constraint=True,
-        can_flag=True,
+        can_flag=False,
         naive_alg_steps=None,
     )
     # linear_solver_agent = LinearEquationsSolver(
