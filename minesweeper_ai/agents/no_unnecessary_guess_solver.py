@@ -411,10 +411,6 @@ class NoUnnecessaryGuessSolver(Agent):
             indexed_moves = self._naive_deduction_solve_section(frontier, fringe)
             sure_moves |= self.indexed_moves_to_coords_moves(frontier, indexed_moves)
 
-            # h = self.sureMovesToHighlights(sure_moves)
-            # self.cheekyHighlight(h)
-            # x = 5
-
         return sure_moves
 
     def _naive_deduction_solve_section(self, frontier, fringe):

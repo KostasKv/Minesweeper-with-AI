@@ -590,7 +590,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
         "time_elapsed": results_initial["time_elapsed"],
         "samples_considered": results_initial["samples_considered"],
         "samples_with_solutions": results_initial["samples_with_solutions"],
-        "samples_solve_duration_total": results_initial['samples_solve_duration_total'],
+        "samples_solve_duration_total": results_initial["samples_solve_duration_total"],
     }
 
     results["difficulty"] = configToDifficultyString(kargs["config"])
@@ -601,6 +601,7 @@ def add_extra_info_to_task_results(results_initial, task_info):
     results["use_num_mines_constraint"] = agent.use_num_mines_constraint
     results["first_click_pos"] = agent.first_click_pos
     results["first_click_is_zero"] = kargs["config"]["first_click_is_zero"]
+    results["can_flag"] = agent.can_flag
     results["naive_alg_steps"] = agent.naive_alg_steps
     results["parameters_id"] = parameters_id
     results["task_id"] = task_id
@@ -1024,7 +1025,10 @@ def getExperiment5():
     title = "Naive algorithm experiment"
 
     agent_parameters = {
-        "variable": {"naive_alg_steps": [0, 1, 2, 3, 4, 5, 6, 7, None]},
+        "variable": {
+            "naive_alg_steps": [0, 1, 2, 3, 4, None],
+            "can_flag": [False, True],
+        },
         "constant": {
             "seed": 50,
             "sample_size": None,  # Sample size None means use full grid
@@ -1076,8 +1080,7 @@ def getExperiment5():
             ],
         },
         "constant": {
-            # "num_games": 25000,
-            "num_games": 1000,
+            "num_games": 25000,
             "seed": 5050,
             "verbose": False,
             "visualise": False,
