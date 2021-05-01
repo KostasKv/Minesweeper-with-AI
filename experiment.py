@@ -590,12 +590,14 @@ def add_extra_info_to_task_results(results_initial, task_info):
         "time_elapsed": results_initial["time_elapsed"],
         "samples_considered": results_initial["samples_considered"],
         "samples_with_solutions": results_initial["samples_with_solutions"],
+        "samples_solve_duration_total": results_initial['samples_solve_duration_total'],
     }
 
     results["difficulty"] = configToDifficultyString(kargs["config"])
-    results["sample_size"] = "x".join(
-        str(num) for num in agent.SAMPLE_SIZE
-    )  # represent sample size (A, B) as string 'AxB'. Bit easier to understand.
+
+    # represent sample size (A, B) as string 'AxB'. Bit easier to understand.
+    results["sample_size"] = "x".join(str(num) for num in agent.SAMPLE_SIZE)
+
     results["use_num_mines_constraint"] = agent.use_num_mines_constraint
     results["first_click_pos"] = agent.first_click_pos
     results["first_click_is_zero"] = kargs["config"]["first_click_is_zero"]
@@ -1024,7 +1026,7 @@ def getExperiment5():
     agent_parameters = {
         "variable": {"naive_alg_steps": [0, 1, 2, 3, 4, 5, 6, 7, None]},
         "constant": {
-            "seed": 20,
+            "seed": 50,
             "sample_size": None,  # Sample size None means use full grid
             "first_click_pos": None,
         },
@@ -1074,8 +1076,9 @@ def getExperiment5():
             ],
         },
         "constant": {
-            "num_games": 25000,
-            "seed": 2020,
+            # "num_games": 25000,
+            "num_games": 1000,
+            "seed": 5050,
             "verbose": False,
             "visualise": False,
         },

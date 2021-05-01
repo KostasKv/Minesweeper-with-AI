@@ -25,11 +25,11 @@ def main_play():
     benchmark = False
     num_games_profile = 10
     num_games_benchmark = 1000
-    num_games_other = 500
+    num_games_other = 3
     config = {"rows": 16, "columns": 30, "num_mines": 99, "first_click_is_zero": True}
     run_seed = 40  # Same run seed as main experiment
     agent_seed = 4040  # Same agent seed as main experiment
-    sample_size = None
+    sample_size = (5, 5)
 
     # Agents selection
     random_agent = RandomAgent()
@@ -39,8 +39,9 @@ def main_play():
         seed=agent_seed,
         sample_size=sample_size,
         use_num_mines_constraint=True,
-        can_flag=False,
+        can_flag=True,
         naive_alg_steps=None,
+        first_click_pos=(0, 5),
     )
     # linear_solver_agent = LinearEquationsSolver(
     #     seed=agent_seed, sample_size=sample_size, use_num_mines_constraint=False

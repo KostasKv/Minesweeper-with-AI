@@ -46,6 +46,7 @@ class NoUnnecessaryGuessSolver(Agent):
         self.turn_stats_this_game = []
         self.sample_stats_this_turn = []
         self.first_click_pos_this_game = None
+        self.samples_solve_duration_total = 0
 
     def nextMove(self):
         if self.game_state == _Game.State.START:
@@ -346,14 +347,26 @@ class NoUnnecessaryGuessSolver(Agent):
         #     sample, disjoint_sections, sps_sure_moves, mines_left
         # )
 
-        deduction_moves = self.naive_deduction_strategy(disjoint_sections)
+        # # DEBUG
+        # self.highlightSample(sample)
+        # h = self.disjointSectionsToHighlights(disjoint_sections)
+        # self.cheekyHighlight(h)
+        # # self.cheekyHighlight(disjoint_sections[0][0], 7)
+        # # self.cheekyHighlight(disjoint_sections[0][1], 2)
         # self.removeAllSampleHighlights(sample)
 
-        # # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
-        # # than the sps approach
-        # if sym_diff := deduction_moves ^ sps_sure_moves:
-        #     left = deduction_moves - sps_sure_moves
-        #     right = sps_sure_moves - deduction_moves
+        naive_moves, naive_duration = self.naive_strategy_measure_time(
+            disjoint_sections
+        )
+
+        self.samples_solve_duration_total += naive_duration
+        # self.removeAllSampleHighlights(sample)
+
+        # DEBUG: Breakpoint inside if-block below to find cases where naive deduction algorithm finds less moves
+        # than the sps approach
+        # if sym_diff := naive_moves ^ sps_sure_moves:
+        #     left = naive_moves - sps_sure_moves
+        #     right = sps_sure_moves - naive_moves
 
         #     # DEBUG: highlights n stuff
 
@@ -374,10 +387,19 @@ class NoUnnecessaryGuessSolver(Agent):
 
         # # new_sure_moves = self.translate_and_prune_sure_moves(sure_moves, sample_pos, is_brute_moves=False)
         new_sure_moves = self.translate_and_prune_sure_moves(
-            deduction_moves, sample_pos, is_brute_moves=False
+            naive_moves, sample_pos, is_brute_moves=False
         )
         # return sps_sure_moves | brute_sure_moves
         return new_sure_moves
+
+    def naive_strategy_measure_time(self, disjoint_sections):
+        start = time.time()
+        moves = self.naive_deduction_strategy(disjoint_sections)
+        end = time.time()
+
+        duration = end - start
+
+        return moves, duration
 
     def naive_deduction_strategy(self, disjoint_sections):
         sure_moves = set()
@@ -462,7 +484,8 @@ class NoUnnecessaryGuessSolver(Agent):
 
         step = 0
 
-        while is_changed and step < steps_limit:
+        while is_changed and step <= steps_limit:
+            step += 1
             is_changed = False
 
             (moves, constraints_data) = self.find_moves_and_update_constraints(
@@ -1615,6 +1638,7 @@ class NoUnnecessaryGuessSolver(Agent):
         stats = {
             "samples_considered": self.sample_count,
             "samples_with_solutions": self.samples_with_solution_count,
+            "samples_solve_duration_total": self.samples_solve_duration_total,
         }
         return stats
 

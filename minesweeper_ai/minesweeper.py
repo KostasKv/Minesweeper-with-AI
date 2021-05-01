@@ -75,8 +75,6 @@ def playGames(executor, renderer, verbose):
     end_time = time.time()
     stats["time_elapsed"] = end_time - start_time
 
-    # print("wins: {} ({}%)".format(wins, round((wins / num_games) * 100, 2)))
-
     agent_stats = renderer.onEndOfGames()
 
     if agent_stats:

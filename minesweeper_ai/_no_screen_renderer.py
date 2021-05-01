@@ -29,5 +29,5 @@ class NoScreenRenderer(Renderer):
             self.agent.onGameBegin(game_seed)
 
     def onEndOfGames(self):
-        """ Return game statistics """
+        """ Return games statistics """
         return self.agent.get_stats()

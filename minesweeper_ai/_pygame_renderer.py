@@ -1,9 +1,8 @@
 import os
 from enum import Enum
 
-os.environ[
-    "PYGAME_HIDE_SUPPORT_PROMPT"
-] = "hide"  # Disable pygame's console welcome message
+# Disable pygame's console welcome message
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame
 
 from ._game import _Game
@@ -444,8 +443,8 @@ class PygameRenderer(Renderer):
         return False
 
     def onEndOfGames(self):
-        print("onEndOfGames NOT YET IMPLEMENTED")
         pygame.quit()
+        return self.agent.get_stats()
 
 
 class Counter(pygame.sprite.Sprite):
