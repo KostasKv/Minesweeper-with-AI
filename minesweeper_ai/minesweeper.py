@@ -3,8 +3,8 @@ import cProfile
 
 from ._game import _Game
 from ._executor import _Executor
-from ._pygame_renderer import PygameRenderer
-from ._no_screen_renderer import NoScreenRenderer
+from .renderers._pygame_renderer import PygameRenderer
+from .renderers._no_screen_renderer import NoScreenRenderer
 from .agents.no_unnecessary_guess_solver import NoUnnecessaryGuessSolver
 
 # For use in method 'update_stats_from_action_result'. Just need this to persist between function calls so we can time game durations.

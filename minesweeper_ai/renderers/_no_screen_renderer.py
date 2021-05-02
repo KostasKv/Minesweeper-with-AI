@@ -1,5 +1,5 @@
 from .renderer import Renderer
-from ._game import _Game
+from .._game import _Game
 
 
 class NoScreenRenderer(Renderer):
