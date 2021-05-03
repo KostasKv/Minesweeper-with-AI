@@ -29,10 +29,6 @@ def main():
     # Use however many logical cores there are on the machine
     num_processes = psutil.cpu_count(logical=True)
 
-    # Running naive alg. experiment on home PC. Freeing up processor space so PC can
-    # still be used while script is running.
-    num_processes -= 2
-
     runExperiment(experiment, batch_size, num_processes, skip_complete_tasks=False)
 
 
