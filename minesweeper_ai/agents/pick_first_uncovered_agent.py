@@ -18,6 +18,6 @@ class PickFirstUncoveredAgent(Agent):
     def onGameBegin(self):
         # Flatten grid to a 1D list
         self.tiles_not_checked = list(chain.from_iterable(self.grid))
-    
+
     def highlightTiles(self):
         pass

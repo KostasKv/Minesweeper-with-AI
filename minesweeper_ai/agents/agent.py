@@ -1,5 +1,6 @@
 from abc import ABC
 
+
 class Agent(ABC):
     def nextMove(self):
         pass

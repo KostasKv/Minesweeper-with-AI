@@ -1,4 +1,4 @@
-''' Scrap code from NoUncessaryGuessSolver. Probably needs some fixing to get it to work. '''
+""" Scrap code from NoUncessaryGuessSolver. Probably needs some fixing to get it to work. """
 
 # def singlePointStrategy(self, sample):
 #         all_sure_moves_found = set()
@@ -119,7 +119,7 @@
 
 #         for i in [-1, 0, 1]:
 #             new_x = x + i
-            
+
 #             if new_x < 0 or new_x > max_x:
 #                 if include_outside:
 #                     is_outside = True
@@ -138,7 +138,7 @@
 #                 # We want adjacent tiles, not the tile itself
 #                 if new_x == x and new_y == y:
 #                     continue
-                
+
 #                 if is_outside:
 #                     adjacent = (new_x, new_y)
 #                 else:
