@@ -1,0 +1,5 @@
+id,rows,columns,mines,name
+1,8,8,10,Beginner (pre Windows 2000)
+2,9,9,10,Beginner
+3,16,16,40,Intermediate
+4,16,30,99,Expert
