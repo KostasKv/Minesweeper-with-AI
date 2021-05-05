@@ -1023,17 +1023,6 @@ def getExperiment5():
     agent_parameters = {
         "variable": {
             "naive_alg_steps": [0, 1, 2, 3, 4, None],
-            "sample_size": [
-                (3, 3),
-                (4, 4),
-                (5, 5),
-                (6, 6),
-                (7, 7),
-                (8, 8),
-                (9, 9),
-                (10, 10),
-                None,
-            ],  # Sample size None means use full grid
             "can_flag": [False, True],
         },
         "constant": {

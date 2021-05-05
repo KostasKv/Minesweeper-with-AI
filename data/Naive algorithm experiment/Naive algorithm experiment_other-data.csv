@@ -1,2 +1,2 @@
-first_click_pos,sample_size,num_games,verbose,visualise,agent_seed,run_seed,batch_size,num_processes
-,,1000,False,False,50,5050,5,6
+sample_size,first_click_pos,num_games,verbose,visualise,agent_seed,run_seed,batch_size,num_processes
+,,25000,False,False,50,5050,5,12
