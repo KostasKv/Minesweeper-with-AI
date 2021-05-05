@@ -444,7 +444,12 @@ class PygameRenderer(Renderer):
 
     def onEndOfGames(self):
         pygame.quit()
-        return self.agent.get_stats()
+
+        try:
+            if self.agent:
+                return self.agent.get_stats()
+        except:
+            return None
 
 
 class Counter(pygame.sprite.Sprite):
