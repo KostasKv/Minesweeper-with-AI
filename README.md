@@ -1,19 +1,25 @@
 # Minesweeper implementation & custom AI player support
 
-This faithful implementation of Minesweeper extends the original with support for AI players through an interface. It can be played either in the graphical mode (so that you may see the AI play, which can help with debugging) or a non-graphical mode which is optimised for performance.
-It also supports sub-grid sampling, where the AI is provided a limited view of the board at any one time.
+This faithful implementation of Minesweeper can either be played as usual by a player or by a custom AI agent that interfaces with the API. It supports both a graphical mode (so you can watch the AI play -- helpful for debugging), and a non-graphical mode that is optimised for performance.
+In addition, the view of the board that is fed to the AI agent can be restricted to a NxM rectangular sample (of custom dimension) which is scanned across the entire board.
 
 Built with Python.
 
 
 ## Why does this exist?
-The motivation behind this version of Minesweeper was to allow for an environment that enables you to easily test your own AI agent(s) against Minesweeper and gather as much data from the runs as needed in an efficient non-graphical mode using an API.
+The motivation behind this version of Minesweeper was to provide an efficient implementation of minesweeper than can easily be interacted with a custom AI implementation.
 
-It was used as part of an Undergraduate final-year project exploring the performance of a couple of AI players with different strategies. In particular, to see the effect limiting information given to the AI (board view size, use of flags) has on its ability to win.
+It was used as the basis for an Undergraduate final-year project in which experiments were run comparing the performance between a perfect-solver AI (using a CSP-solver with random guesses when no definite-solutions are possible) and a pattern-matching heuristic player which tries to closely mimick the strategy a human player would use for deducing which tiles to flag/click (without resorting to brute-force calculations).
+
+In particular, the motivation was to analyse how restricting the information available to an AI agent could upper-bound its best possible performance (as measured by the perfect-solver) in terms of win-rate, so as to find the minimum information that should be available to any generic AI agent for it to have any hope of still having a significant win-rate. The pattern-matching strategy was analysed to see how a more typical strategy fares in the same restricted circumstances.
 The two built-in AI players are:
-- An exact solver (always plays the best move with all available information)
-- A naive solver (replicates the typical strategy a person would use)
+- An exact solver -- always plays a definite-move if its possible to deduce it using all its available information. Otherwise, make a uniformly random guess. This was done by transforming the (NxM sample view of) the board into a constraint satisfaction problem and then using a CSP solver on that.
+- A naive solver -- mimicks the typical strategy a person would use by analysing the patterns of numbers along the borders
 
-For a more detailed discussion (and the results), see the full report in the repository.
+The information restrictions were:
+- the NxM sample of the grid that the agent can see at any one time (which is then scanned across the board)
+- whether an agent can use flags
+
+For a more detailed discussion and analysis of the results, see the full report in the repository.
 
 ![](minesweeper-demo.png)
