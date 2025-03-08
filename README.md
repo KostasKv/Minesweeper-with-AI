@@ -1,24 +1,33 @@
-# Minesweeper implementation & custom AI player support
+# Minesweeper implementation with custom AI player support
 
-This faithful implementation of Minesweeper can either be played as usual by a player or by a custom AI agent that interfaces with the API. It supports both a graphical mode (so you can watch the AI play -- helpful for debugging), and a non-graphical mode that is optimised for performance.
-In addition, the view of the board that is fed to the AI agent can be restricted to a NxM rectangular sample (of custom dimension) which is scanned across the entire board.
+An accurate replica of Minesweeper extended with an API allowing for custom AI player integration. It supports both:
+
+- **Visual mode** – Observe AI play in real-time (useful for debugging and analysis), or play the game manually if preferred.
+- **Headless mode** – Optimised for performance
+
+Additionally, AI players can be restricted to viewing only a rectangular sample of the board (of configurable dimensions) scanned across the entire grid per turn. This feature enables testing of AI decision-making under limited information constraints.
+
 
 Built with Python.
 
 ![](minesweeper-demo.png)
 
-## Why does this exist?
-The motivation behind this version of Minesweeper was to provide an efficient implementation of minesweeper that can easily be interacted with a custom AI implementation.
+## Key Features
+- **Two AI implementations included**:
+  - *Perfect deterministic solver* – Uses brute-force constraint satisfaction (Google's CP-SAT Solver) to select a tile that is guaranteed to be safe whenever it is possible to know this in a given turn. When there are no guaranteed safe moves, it selects a random tile instead.
+  - *Pattern-matching solver* – Mimics human-like strategy by identifying [number patterns along tile borders](https://minesweeper.online/help/patterns).
+- **Visual / Headless Modes** – Play the game manually or watch an AI play using the visual mode. Headless mode allows for high-speed simulations without rendering allowing for the AI's performance to be more easily benchmarked
+- **Restricted View Configurations**: AI players can be limited to an NxM rectangular view. Each turn, the AI is provided NxM samples scanned across the board.
 
-It was used as the basis for a dissertation (during undergraduate studies) in which two custom AI agents were designed, implemented, and their performances then test & compared using this Minesweeper implementation. The two agents are a perfect-solver AI (using a CSP-solver with random guesses when no definite solutions are possible) and a pattern-matching heuristic player which tries to closely mimic the strategy a human player would use for deducing which tiles to flag/click (without resorting to brute-force calculations).
 
-In particular, the motivation was to analyse how restricting the information available to an AI agent could upper-bound its best possible performance (as measured by the perfect-solver) in terms of win rate, so as to find the minimum information that should be available to any generic AI agent for it to have any hope of still having a significant win-rate. The pattern-matching strategy was analysed to see how a more typical strategy fares in the same restricted circumstances.
-The two built-in AI players are:
-- An exact solver -- always plays a definite move if its possible to deduce it using all its available information. Otherwise, make a uniformly random guess. This was done by transforming the (NxM sample view of) the board into a constraint satisfaction problem and then using a CSP solver on that.
-- A naive solver -- mimics the typical strategy a person would use by analysing the patterns of numbers along the borders
+## Motivation
+This project was developed out of a need for an efficient Minesweeper implementation that also exposes an interface allowing custom AI players.
 
-The information restrictions were:
-- the NxM sample of the grid that the agent can see at any one time (which is then scanned across the board)
-- whether an agent can flag tiles
+It was originally used in an undergraduate dissertation that explored the maximum attainable performance, as measured by win rate, of optimal deterministic players (using brute force search) under a variety of information constraints (e.g., sample size, whether flagging tiles is allowed). The goal was to determine the smallest amount of information required for an AI to achieve a significant win rate.
+
+The pattern-matching solver was also analysed to see how the more typical strategy used by human players fares in the same restricted circumstances.
 
 For a more detailed discussion and analysis of the results, see the full report in the repository.
+
+
+
