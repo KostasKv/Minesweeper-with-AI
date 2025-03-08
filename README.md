@@ -5,6 +5,7 @@ In addition, the view of the board that is fed to the AI agent can be restricted
 
 Built with Python.
 
+![](minesweeper-demo.png)
 
 ## Why does this exist?
 The motivation behind this version of Minesweeper was to provide an efficient implementation of minesweeper that can easily be interacted with a custom AI implementation.
@@ -21,5 +22,3 @@ The information restrictions were:
 - whether an agent can flag tiles
 
 For a more detailed discussion and analysis of the results, see the full report in the repository.
-
-![](minesweeper-demo.png)
